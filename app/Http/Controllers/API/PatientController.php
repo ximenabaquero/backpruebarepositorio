@@ -77,7 +77,6 @@ class PatientController extends Controller
             // Crear nuevo paciente
             $patient = Patient::create([
                 'user_id'        => $user->id,
-                'referrer_name'  => $user->name, // automático
                 'first_name'     => $data['first_name'],
                 'last_name'      => $data['last_name'],
                 'cellphone'      => $data['cellphone'],

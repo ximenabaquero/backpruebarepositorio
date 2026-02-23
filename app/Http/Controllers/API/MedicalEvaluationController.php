@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMedicalEvaluationRequest;
 use App\Http\Requests\UpdateMedicalEvaluationRequest;
 use App\Models\MedicalEvaluation;
+use App\Models\User;
+use App\Models\Patient;
 use Illuminate\Support\Facades\DB;
 
 class MedicalEvaluationController extends Controller
@@ -41,15 +43,16 @@ class MedicalEvaluationController extends Controller
             $patient = Patient::findOrFail($data['patient_id']);
             $patientAge = $patient->age; // usa getAgeAttribute()
 
-            $medicalEvaluation = DB::transaction(function () use ($data, $bmi, $bmiStatus, $patientAge) {
+            $medicalEvaluation = DB::transaction(function () use ($data, $bmi, $bmiStatus, $patientAge, $user) {
                 return MedicalEvaluation::create([
-                    'user_id'                  => auth()->id(),
+                    'user_id'                  => $user->id,
                     'patient_id'               => $data['patient_id'],
                     'medical_background'       => $data['medical_background'],
                     'weight'                   => $data['weight'],
                     'height'                   => $data['height'],
                     'bmi'                      => $bmi,
                     'bmi_status'               => $bmiStatus,
+                    'referrer_name'            => $user->name, 
                     'patient_age_at_evaluation'=> $patientAge,
                     'status'                   => MedicalEvaluation::STATUS_EN_ESPERA,
                 ]);

@@ -50,7 +50,6 @@ class ClinicSeeder extends Seeder
                 ->count(5) 
                 ->create([ 
                     'user_id' => $admin->id, 
-                    'referrer_name' => $admin->name, 
                 ]);
 
             // Pacientes de remitentes activos

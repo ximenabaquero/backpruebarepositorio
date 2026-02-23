@@ -39,6 +39,7 @@ class MedicalEvaluationFactory extends Factory
             'height'                   => $height,
             'bmi'                      => $bmi,
             'bmi_status'               => $bmiStatus,
+            'referrer_name'            => $patient->user?->name, 
             'patient_age_at_evaluation'=> $patient->age,
             'status'                   => MedicalEvaluation::STATUS_EN_ESPERA,
         ];

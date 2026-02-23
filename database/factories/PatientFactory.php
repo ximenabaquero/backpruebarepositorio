@@ -16,7 +16,6 @@ class PatientFactory extends Factory
 
         return [
             'user_id'        => $user?->id,
-            'referrer_name'  => $user?->name,
             'first_name'     => $this->faker->firstName(),
             'last_name'      => $this->faker->lastName(),
             'cellphone'      => $this->faker->numerify('##########'), // 10 dígitos
