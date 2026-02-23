@@ -16,10 +16,15 @@ class Patient extends Model
         'first_name',
         'last_name',
         'cellphone',
-        'age',
+        'date_of_birth',
         'biological_sex',
         'cedula',
     ];
+
+    public function getAgeAttribute()
+    {
+        return \Carbon\Carbon::parse($this->date_of_birth)->age;
+    }
 
     /* Relaciones */
     public function user()

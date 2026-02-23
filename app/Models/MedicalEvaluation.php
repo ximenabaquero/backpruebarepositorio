@@ -24,6 +24,7 @@ class MedicalEvaluation extends Model
         'bmi',
         'bmi_status',
         'status',
+        'patient_age_at_evaluation',
         'confirmed_at',
         'confirmed_by_user_id',
         'canceled_at',

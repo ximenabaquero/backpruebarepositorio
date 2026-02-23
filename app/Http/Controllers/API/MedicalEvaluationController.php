@@ -11,21 +11,17 @@ use Illuminate\Support\Facades\DB;
 class MedicalEvaluationController extends Controller
 {  
     
-    // CREAR VALORACIÓN MÉDICA
+   // CREAR VALORACIÓN MÉDICA
     public function store(StoreMedicalEvaluationRequest $request)
     {
         try {
-            
             $data = $request->validated();
 
-            $user = auth()->user(); // obtenemos el usuario autenticado
+            $user = auth()->user();
             if (!$user) {
-                return response()->json([
-                    'message' => 'No autenticado'
-                ], 401);
+                return response()->json(['message' => 'No autenticado'], 401);
             }
 
-            // Bloquear si está inactivo o despedido
             if ($user->status !== User::STATUS_ACTIVE) {
                 return response()->json([
                     'message' => 'Tu cuenta no está activa. No puedes registrar pacientes.'
@@ -41,86 +37,101 @@ class MedicalEvaluationController extends Controller
             // Calcular estado BMI
             $bmiStatus = $this->getBmiStatus($bmi);
 
-            $medicalEvaluation = DB::transaction(function () use ($data, $bmi, $bmiStatus) {
+            // Obtener edad del paciente en el momento de la evaluación
+            $patient = Patient::findOrFail($data['patient_id']);
+            $patientAge = $patient->age; // usa getAgeAttribute()
+
+            $medicalEvaluation = DB::transaction(function () use ($data, $bmi, $bmiStatus, $patientAge) {
                 return MedicalEvaluation::create([
-                    'user_id' => auth()->id(),
-                    'patient_id' => $data['patient_id'],
-                    'medical_background' => $data['medical_background'],
-                    'weight' => $data['weight'],
-                    'height' => $data['height'],
-                    'bmi' => $bmi,
-                    'bmi_status' => $bmiStatus,
-                    'status' => MedicalEvaluation::STATUS_EN_ESPERA,
-                    
+                    'user_id'                  => auth()->id(),
+                    'patient_id'               => $data['patient_id'],
+                    'medical_background'       => $data['medical_background'],
+                    'weight'                   => $data['weight'],
+                    'height'                   => $data['height'],
+                    'bmi'                      => $bmi,
+                    'bmi_status'               => $bmiStatus,
+                    'patient_age_at_evaluation'=> $patientAge,
+                    'status'                   => MedicalEvaluation::STATUS_EN_ESPERA,
                 ]);
             });
 
             return response()->json([
                 'message' => 'Valoración médica creada correctamente',
-                'data' => $medicalEvaluation->load(['patient', 'user']),
+                'data'    => $medicalEvaluation->load(['patient', 'user']),
             ], 201);
+
         } catch (\Throwable $th) {
-            return response()->json(['error' => $th->getMessage()], 500);
+            return response()->json([
+                'error'   => 'Error interno del servidor',
+                'details' => $th->getMessage(),
+            ], 500);
         }
     }
 
-    // ACTUALIZAR VALORACIÓN
+   // ACTUALIZAR VALORACIÓN
     public function update(UpdateMedicalEvaluationRequest $request, MedicalEvaluation $medicalEvaluation)
     {
-        $user = auth()->user();
-        if (!$user) {
+        try {
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json(['message' => 'No autenticado'], 401);
+            }
+
+            if ($user->status !== User::STATUS_ACTIVE) {
+                return response()->json([
+                    'message' => 'Tu cuenta no está activa. No puedes actualizar valoraciones.'
+                ], 403);
+            }
+
+            $data = $request->validated();
+
+            if ($medicalEvaluation->isConfirmado()) {
+                return response()->json([
+                    'message' => 'No se pueden editar datos clínicos de una valoración confirmada. Debe cancelarla primero.'
+                ], 403);
+            }
+
+            DB::transaction(function () use ($data, $medicalEvaluation) {
+                if (isset($data['weight'])) {
+                    $medicalEvaluation->weight = $data['weight'];
+                }
+
+                if (isset($data['height'])) {
+                    $medicalEvaluation->height = $data['height'];
+                }
+
+                if (isset($data['medical_background'])) {
+                    $medicalEvaluation->medical_background = $data['medical_background'];
+                }
+
+                // Recalcular BMI si cambia peso o altura
+                if (isset($data['weight']) || isset($data['height'])) {
+                    $weight = $medicalEvaluation->weight;
+                    $height = $medicalEvaluation->height;
+
+                    $bmi = round($weight / ($height * $height), 2);
+                    $medicalEvaluation->bmi = $bmi;
+                    $medicalEvaluation->bmi_status = $this->getBmiStatus($bmi);
+                }
+
+                // Recalcular edad del paciente en la evaluación
+                $patient = $medicalEvaluation->patient;
+                $medicalEvaluation->patient_age_at_evaluation = $patient->age;
+
+                $medicalEvaluation->save();
+            });
+
             return response()->json([
-                'message' => 'No autenticado'
-            ], 401);
-        }
+                'message' => 'Valoración médica actualizada correctamente',
+                'data'    => $medicalEvaluation->load(['patient', 'user', 'procedures']),
+            ]);
 
-        if ($user->status !== User::STATUS_ACTIVE) {
+        } catch (\Throwable $th) {
             return response()->json([
-                'message' => 'Tu cuenta no está activa. No puedes actualizar valoraciones.'
-            ], 403);
+                'error'   => 'Error interno del servidor',
+                'details' => $th->getMessage(),
+            ], 500);
         }
-
-        $data = $request->validated();
-
-        // Bloquear edición si está confirmado
-        if ($medicalEvaluation->isConfirmado()) {
-            return response()->json([
-                'message' => 'No se pueden editar datos clínicos de una valoración confirmada. Debe cancelarla primero.'
-            ], 403);
-        }
-
-        DB::transaction(function () use ($data, $medicalEvaluation) {
-
-            if (isset($data['weight'])) {
-                $medicalEvaluation->weight = $data['weight'];
-            }
-
-            if (isset($data['height'])) {
-                $medicalEvaluation->height = $data['height'];
-            }
-
-            if (isset($data['medical_background'])) {
-                $medicalEvaluation->medical_background = $data['medical_background'];
-            }
-
-            // Recalcular BMI solo si cambia peso o altura
-            if (isset($data['weight']) || isset($data['height'])) {
-                $weight = $medicalEvaluation->weight;
-                $height = $medicalEvaluation->height;
-
-                $bmi = round($weight / ($height * $height), 2);
-
-                $medicalEvaluation->bmi = $bmi;
-                $medicalEvaluation->bmi_status = $this->getBmiStatus($bmi);
-            }
-
-            $medicalEvaluation->save();
-        });
-
-        return response()->json([
-            'message' => 'Valoración médica actualizada correctamente',
-            'data' => $medicalEvaluation->load(['patient', 'user', 'procedures']),
-        ]);
     }
 
     // CONFIRMAR VALORACIÓN
@@ -244,6 +255,49 @@ class MedicalEvaluationController extends Controller
         return response()->json([
             'data' => $evaluation,
         ]);
+    }
+
+    // MOSTRAR UNA VALORACIÓN POR ID
+    public function showById(int $id)
+    {
+        try {
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json([
+                    'message' => 'No autenticado'
+                ], 401);
+            }
+
+            if ($user->status !== User::STATUS_ACTIVE) {
+                return response()->json([
+                    'message' => 'Tu cuenta no está activa.'
+                ], 403);
+            }
+
+            $evaluation = MedicalEvaluation::with([
+                    'patient',
+                    'procedures.items',
+                    'user',
+                    'confirmedBy',
+                    'canceledBy',
+                ])->find($id);
+
+            if (!$evaluation) {
+                return response()->json([
+                    'message' => 'No se encontró la valoración médica solicitada',
+                ], 404);
+            }
+
+            return response()->json([
+                'data' => $evaluation,
+            ], 200);
+
+        } catch (\Throwable $th) {
+            return response()->json([
+                'error' => 'Error',
+                'details' => $th->getMessage(),
+            ], 500);
+        }
     }
 
     // FUNCIÓN PRIVADA BMI

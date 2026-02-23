@@ -47,7 +47,7 @@ class ClinicSeeder extends Seeder
 
             // Pacientes del admin
             $patientsAdmin = Patient::factory() 
-                ->count(10) 
+                ->count(5) 
                 ->create([ 
                     'user_id' => $admin->id, 
                     'referrer_name' => $admin->name, 
@@ -55,7 +55,7 @@ class ClinicSeeder extends Seeder
 
             // Pacientes de remitentes activos
             $patientsRemitentes = Patient::factory() 
-                ->count(20) 
+                ->count(10) 
                 ->create();
 
             // Unir ambas colecciones 
@@ -64,11 +64,11 @@ class ClinicSeeder extends Seeder
         foreach ($patients as $patient) {
             // Cada paciente tiene 1–2 evaluaciones médicas
             $medicalEvaluations = MedicalEvaluation::factory()
-                ->count(rand(1, 2))
-                ->create([
-                    'user_id' => $admin->id, // también se puede usar $remitentes->random()->id
-                    'patient_id' => $patient->id,
-                ]);
+                    ->count(rand(1, 2))
+                    ->create([
+                        'user_id'    => $patient->user_id, // mismo user que creó al paciente
+                        'patient_id' => $patient->id,
+                    ]);
 
             foreach ($medicalEvaluations as $medical) {
                 // Cada evaluación tiene 1–4 procedimientos
