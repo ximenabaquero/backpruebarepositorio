@@ -65,23 +65,37 @@ class PatientController extends Controller
                 ], 403);
             }
 
+            // Verificar si ya existe un paciente con la misma cédula
+            $existingPatient = Patient::where('cedula', $data['cedula'])->first();
+            if ($existingPatient) {
+                return response()->json([
+                    'message' => 'El paciente ya está registrado en el sistema.',
+                    'data'    => $existingPatient,
+                ], 200);
+            }
+
+            // Crear nuevo paciente
             $patient = Patient::create([
-                'user_id'       => $user->id,
-                'referrer_name' => $user->name, // automático
-                'first_name'    => $data['first_name'],
-                'last_name'     => $data['last_name'],
-                'cellphone'     => $data['cellphone'],
-                'age'           => (int) $data['age'],
-                'biological_sex'=> $data['biological_sex'],
-                'cedula'        => $data['cedula'],
+                'user_id'        => $user->id,
+                'first_name'     => $data['first_name'],
+                'last_name'      => $data['last_name'],
+                'cellphone'      => $data['cellphone'],
+                'date_of_birth'  => $data['date_of_birth'], 
+                'biological_sex' => $data['biological_sex'],
+                'cedula'         => $data['cedula'],
             ]);
 
             return response()->json([
                 'message' => 'Paciente creado correctamente',
                 'data'    => $patient,
             ], 201);
+
         } catch (\Throwable $th) {
-            return response()->json(['error' => $th->getMessage()], 500);
+            return response()->json([
+                'error'   => 'Error interno del servidor',
+                'details' => $th->getMessage(),
+            ], 500);
         }
     }
+
 }

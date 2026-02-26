@@ -4,7 +4,6 @@ namespace Database\Factories;
 
 use App\Models\MedicalEvaluation;
 use App\Models\Patient;
-use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 class MedicalEvaluationFactory extends Factory
@@ -13,15 +12,11 @@ class MedicalEvaluationFactory extends Factory
 
     public function definition(): array
     {
-        $weight = $this->faker->numberBetween(50, 90);
-        $height = $this->faker->numberBetween(150, 180);
+        $weight = $this->faker->numberBetween(50, 90); // kg
+        $height = $this->faker->randomFloat(2, 1.50, 1.90); // metros
 
-        // BMI = peso / (altura en metros ^ 2)
-        // Como faker da altura en cm, conviértela a metros
-        $heightInMeters = $height / 100;
-        $bmi = round($weight / ($heightInMeters * $heightInMeters), 2);
+        $bmi = round($weight / ($height * $height), 2);
 
-        // Estado BMI (puedes reutilizar la misma lógica que en tu controlador)
         $bmiStatus = match (true) {
             $bmi < 16.0 => 'Delgadez severa (< 16.0)',
             $bmi < 17.0 => 'Delgadez moderada (16.0–16.9)',
@@ -33,15 +28,20 @@ class MedicalEvaluationFactory extends Factory
             default => 'Obesidad grado III (≥ 40)',
         };
 
+        // Creamos un paciente con su user_id
+        $patient = Patient::factory()->create();
+
         return [
-            'user_id' => User::factory(),
-            'patient_id' => Patient::factory(),
-            'medical_background' => $this->faker->sentence(),
-            'weight' => $weight,
-            'height' => $height,
-            'bmi' => $bmi,
-            'bmi_status' => $bmiStatus,
-            'status' => MedicalEvaluation::STATUS_EN_ESPERA,
+            'user_id'                  => $patient->user_id, 
+            'patient_id'               => $patient->id,
+            'medical_background'       => $this->faker->sentence(),
+            'weight'                   => $weight,
+            'height'                   => $height,
+            'bmi'                      => $bmi,
+            'bmi_status'               => $bmiStatus,
+            'referrer_name'            => $patient->user?->name, 
+            'patient_age_at_evaluation'=> $patient->age,
+            'status'                   => MedicalEvaluation::STATUS_EN_ESPERA,
         ];
     }
 }

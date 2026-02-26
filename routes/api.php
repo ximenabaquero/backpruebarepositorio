@@ -74,6 +74,7 @@ use Illuminate\Http\Request;
 
             // Valoraciones
             Route::get('/medical-evaluation/patient/{patient}',[MedicalEvaluationController::class, 'showByPatient']);
+            Route::get('/medical-evaluations/{id}', [MedicalEvaluationController::class, 'showById']);
             Route::post('/medical-evaluations', [MedicalEvaluationController::class, 'store']);
             Route::put('/medical-evaluations/{medicalEvaluation}', [MedicalEvaluationController::class, 'update']);
             //estados de valoración (EN_ESPERA, CONFIRMADO, CANCELADO)
