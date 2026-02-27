@@ -56,6 +56,11 @@ class MedicalEvaluation extends Model
         return $this->status === self::STATUS_CANCELADO;
     }
 
+    public function scopeConfirmado($query)
+    {
+        return $query->where('status', self::STATUS_CONFIRMADO);
+    }
+
     /* Relaciones */
     public function user()
     {

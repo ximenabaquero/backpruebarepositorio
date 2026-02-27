@@ -62,33 +62,52 @@ class ClinicSeeder extends Seeder
 
         foreach ($patients as $patient) {
             // Cada paciente tiene 1–2 evaluaciones médicas
-            $medicalEvaluations = MedicalEvaluation::factory()
-                    ->count(rand(1, 2))
-                    ->create([
-                        'user_id'    => $patient->user_id, // mismo user que creó al paciente
-                        'patient_id' => $patient->id,
-                    ]);
+            $medicalEvaluations = collect();
+
+                $count = rand(1, 2);
+
+                for ($i = 0; $i < $count; $i++) {
+
+                    $randomState = rand(1, 100);
+
+                    if ($randomState <= 60) {
+                        $factory = MedicalEvaluation::factory()->confirmado(); // 60%
+                    } elseif ($randomState <= 85) {
+                        $factory = MedicalEvaluation::factory()->cancelado(); // 25%
+                    } else {
+                        $factory = MedicalEvaluation::factory()->enEspera(); // 15%
+                    }
+
+                    $medicalEvaluations->push(
+                        $factory->create([
+                            'user_id'    => $patient->user_id,
+                            'patient_id' => $patient->id,
+                        ])
+                    );
+                }
 
             foreach ($medicalEvaluations as $medical) {
                 // Cada evaluación tiene 1–4 procedimientos
-                $procedures = Procedure::factory()
-                    ->count(rand(1, 4))
-                    ->create([
-                        'medical_evaluation_id' => $medical->id,
-                        'brand_slug' => config('app.brand_slug'),
-                        'procedure_date' => now()->subDays(rand(0, 60)),
-                    ]);
-
-                foreach ($procedures as $procedure) {
-                    $items = ProcedureItem::factory()
-                        ->count(rand(1, 3))
+                if ($medical->isConfirmado()) {
+                    $procedures = Procedure::factory()
+                        ->count(rand(1, 4))
                         ->create([
-                            'procedure_id' => $procedure->id,
+                            'medical_evaluation_id' => $medical->id,
+                            'brand_slug' => config('app.brand_slug'),
+                            'procedure_date' => now()->subDays(rand(0, 60)),
                         ]);
-                    // Recalcular total del procedimiento
-                    $procedure->update([
-                        'total_amount' => $items->sum('price'),
-                    ]);
+
+                    foreach ($procedures as $procedure) {
+                        $items = ProcedureItem::factory()
+                            ->count(rand(1, 3))
+                            ->create([
+                                'procedure_id' => $procedure->id,
+                            ]);
+                        // Recalcular total del procedimiento
+                        $procedure->update([
+                            'total_amount' => $items->sum('price'),
+                        ]);
+                    }
                 }
             }
         }

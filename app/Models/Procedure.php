@@ -18,6 +18,13 @@ class Procedure extends Model
         'notes',
     ];
 
+    public function scopeConEvaluacionConfirmada($query)
+    {
+        return $query->whereHas('medicalEvaluation', function ($q) {
+            $q->confirmado();
+        });
+    }
+
     /* Relaciones */
     public function medicalEvaluation()
     {
