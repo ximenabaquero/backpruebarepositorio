@@ -17,44 +17,55 @@ class StatsController extends Controller
     public function summary()
     {
         $now = Carbon::now();
+        $lastMonth = $now->copy()->subMonth();
+
+        $startOfThisMonth = $now->copy()->startOfMonth();
+        $endOfThisMonth = $now->copy()->endOfMonth();
+
+        $startOfLastMonth = $lastMonth->copy()->startOfMonth();
+        $endOfLastMonth = $lastMonth->copy()->endOfMonth();
 
         // Mes actual
-        $thisMonthIncome = Procedure::whereMonth('procedure_date', $now->month)
-            ->whereYear('procedure_date', $now->year)
+        $thisMonthIncome = Procedure::conEvaluacionConfirmada()
+            ->whereBetween('procedure_date', [$startOfThisMonth, $endOfThisMonth])
             ->sum('total_amount');
 
-        $thisMonthPatients = Patient::whereMonth('created_at', $now->month)
-            ->whereYear('created_at', $now->year)
+        $thisMonthPatients = MedicalEvaluation::where('status', 'CONFIRMADO')
+            ->whereBetween('created_at', [$startOfThisMonth, $endOfThisMonth])
+            ->distinct('patient_id')
+            ->count('patient_id');
+
+        $thisMonthSessions = Procedure::conEvaluacionConfirmada()
+            ->whereBetween('procedure_date', [$startOfThisMonth, $endOfThisMonth])
             ->count();
 
-        $thisMonthSessions = Procedure::whereMonth('procedure_date', $now->month)
-            ->whereYear('procedure_date', $now->year)
-            ->count();
-
-        $thisMonthProcedures = ProcedureItem::whereMonth('created_at', $now->month)
-            ->whereYear('created_at', $now->year)
+        $thisMonthProcedures = ProcedureItem::whereHas('procedure.medicalEvaluation', function ($q) {
+                $q->where('status', 'CONFIRMADO');
+            })
+            ->whereBetween('created_at', [$startOfThisMonth, $endOfThisMonth])
             ->count();
 
         // Mes anterior
-        $lastMonth = $now->copy()->subMonth();
-
-        $lastMonthIncome = Procedure::whereMonth('procedure_date', $lastMonth->month)
-            ->whereYear('procedure_date', $lastMonth->year)
+        $lastMonthIncome = Procedure::conEvaluacionConfirmada()
+            ->whereBetween('procedure_date', [$startOfLastMonth, $endOfLastMonth])
             ->sum('total_amount');
 
-        $lastMonthPatients = Patient::whereMonth('created_at', $lastMonth->month)
-            ->whereYear('created_at', $lastMonth->year)
+        $lastMonthPatients = MedicalEvaluation::where('status', 'CONFIRMADO')
+            ->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])
+            ->distinct('patient_id')
+            ->count('patient_id');
+
+        $lastMonthSessions = Procedure::conEvaluacionConfirmada()
+            ->whereBetween('procedure_date', [$startOfLastMonth, $endOfLastMonth])
             ->count();
 
-        $lastMonthSessions = Procedure::whereMonth('procedure_date', $lastMonth->month)
-            ->whereYear('procedure_date', $lastMonth->year)
+        $lastMonthProcedures = ProcedureItem::whereHas('procedure.medicalEvaluation', function ($q) {
+                $q->where('status', 'CONFIRMADO');
+            })
+            ->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])
             ->count();
 
-        $lastMonthProcedures = ProcedureItem::whereMonth('created_at', $lastMonth->month)
-            ->whereYear('created_at', $lastMonth->year)
-            ->count();
-
-        // Variaciones porcentuales
+        // Variaciones
         $incomeVariation = $lastMonthIncome > 0
             ? round((($thisMonthIncome - $lastMonthIncome) / $lastMonthIncome) * 100, 2)
             : null;
@@ -73,9 +84,12 @@ class StatsController extends Controller
 
         return response()->json([
             'total_patients' => Patient::count(),
-            'total_sessions' => Procedure::count(),
+
+            'total_sessions' => Procedure::conEvaluacionConfirmada()->count(),
+
             'total_procedures' => ProcedureItem::count(),
-            'total_income' => Procedure::sum('total_amount'),
+
+            'total_income' => Procedure::conEvaluacionConfirmada()->sum('total_amount'),
 
             'this_month_income' => $thisMonthIncome,
             'last_month_income' => $lastMonthIncome,
@@ -96,114 +110,79 @@ class StatsController extends Controller
     }
 
     /**
-     * Pacientes - Ingresos por remitente (Mes actual y total histórico)
+     * remitente y admin, sus ingresos, pacientes,etc
      */
     public function referrerStats()
     {
         $now = Carbon::now();
 
-        // Pacientes por remitente (total histórico)
-        $patientsTotal = Patient::select(
-                'referrer_name',
-                DB::raw('COUNT(*) as total_patients')
-            )
-            ->whereNotNull('referrer_name')
-            ->groupBy('referrer_name')
-            ->get();
+        $startOfMonth = $now->copy()->startOfMonth();
+        $endOfMonth   = $now->copy()->endOfMonth();
 
-        // Pacientes por remitente (mes actual)
-        $patientsMonth = Patient::select(
-                'referrer_name',
-                DB::raw('COUNT(*) as month_patients')
-            )
-            ->whereNotNull('referrer_name')
-            ->whereMonth('created_at', $now->month)
-            ->whereYear('created_at', $now->year)
-            ->groupBy('referrer_name')
-            ->get();
+        $startOfYear = $now->copy()->startOfYear();
+        $endOfYear   = $now->copy()->endOfYear();
 
-        // Ingresos por remitente (total histórico)
-        $incomeTotal = DB::table('procedures')
-            ->join('medical_evaluations', 'procedures.medical_evaluation_id', '=', 'medical_evaluations.id')
-            ->join('patients', 'medical_evaluations.patient_id', '=', 'patients.id')
+        $stats = DB::table('medical_evaluations')
+            ->leftJoin('procedures', 'medical_evaluations.id', '=', 'procedures.medical_evaluation_id')
             ->select(
-                'patients.referrer_name',
-                DB::raw('SUM(procedures.total_amount) as total_income')
+                'medical_evaluations.referrer_name',
+                // Pacientes únicos del mes
+                DB::raw("
+                    COUNT(DISTINCT CASE
+                        WHEN medical_evaluations.status = 'CONFIRMADO'
+                        AND medical_evaluations.created_at 
+                            BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
+                        THEN medical_evaluations.patient_id
+                    END) as total_patients_month
+                "),
+
+                // Registros confirmados del mes
+                DB::raw("
+                    SUM(CASE
+                        WHEN medical_evaluations.status = 'CONFIRMADO'
+                        AND medical_evaluations.created_at 
+                            BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
+                        THEN 1 ELSE 0
+                    END) as total_confirmed_month
+                "),
+
+                // Registros cancelados del mes
+                DB::raw("
+                    SUM(CASE
+                        WHEN medical_evaluations.status = 'CANCELADO'
+                        AND medical_evaluations.created_at 
+                            BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
+                        THEN 1 ELSE 0
+                    END) as total_canceled_month
+                "),
+
+                // Ingresos confirmados del mes
+                DB::raw("
+                    SUM(CASE
+                        WHEN medical_evaluations.status = 'CONFIRMADO'
+                        AND procedures.procedure_date 
+                            BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
+                        THEN procedures.total_amount
+                        ELSE 0
+                    END) as confirmed_income_month
+                "),
+                // Ingresos confirmados del año actual
+                DB::raw("
+                    SUM(CASE
+                        WHEN medical_evaluations.status = 'CONFIRMADO'
+                        AND procedures.procedure_date 
+                            BETWEEN '{$startOfYear}' AND '{$endOfYear}'
+                        THEN procedures.total_amount
+                        ELSE 0
+                    END) as confirmed_income_year
+                ")
             )
-            ->whereNotNull('patients.referrer_name')
-            ->groupBy('patients.referrer_name')
+            ->whereNotNull('medical_evaluations.referrer_name')
+            ->groupBy('medical_evaluations.referrer_name')
+            ->orderByDesc('confirmed_income_year')
             ->get();
 
-        // Ingresos por remitente (mes actual)
-        $incomeMonth = DB::table('procedures')
-            ->join('medical_evaluations', 'procedures.medical_evaluation_id', '=', 'medical_evaluations.id')
-            ->join('patients', 'medical_evaluations.patient_id', '=', 'patients.id')
-            ->select(
-                'patients.referrer_name',
-                DB::raw('SUM(procedures.total_amount) as month_income')
-            )
-            ->whereNotNull('patients.referrer_name')
-            ->whereMonth('procedure_date', $now->month)
-            ->whereYear('procedure_date', $now->year)
-            ->groupBy('patients.referrer_name')
-            ->get();
-
-        // Merge de resultados
-        $merged = [];
-
-        foreach ($patientsTotal as $p) {
-            $merged[$p->referrer_name] = [
-                'referrer_name'   => $p->referrer_name,
-                'total_patients'  => $p->total_patients,
-                'month_patients'  => 0,
-                'total_income'    => 0,
-                'month_income'    => 0,
-            ];
-        }
-
-        foreach ($patientsMonth as $pm) {
-            if (isset($merged[$pm->referrer_name])) {
-                $merged[$pm->referrer_name]['month_patients'] = $pm->month_patients;
-            } else {
-                $merged[$pm->referrer_name] = [
-                    'referrer_name'   => $pm->referrer_name,
-                    'total_patients'  => 0,
-                    'month_patients'  => $pm->month_patients,
-                    'total_income'    => 0,
-                    'month_income'    => 0,
-                ];
-            }
-        }
-
-        foreach ($incomeTotal as $i) {
-            if (isset($merged[$i->referrer_name])) {
-                $merged[$i->referrer_name]['total_income'] = $i->total_income;
-            } else {
-                $merged[$i->referrer_name] = [
-                    'referrer_name'   => $i->referrer_name,
-                    'total_patients'  => 0,
-                    'month_patients'  => 0,
-                    'total_income'    => $i->total_income,
-                    'month_income'    => 0,
-                ];
-            }
-        }
-
-        foreach ($incomeMonth as $im) {
-            if (isset($merged[$im->referrer_name])) {
-                $merged[$im->referrer_name]['month_income'] = $im->month_income;
-            } else {
-                $merged[$im->referrer_name] = [
-                    'referrer_name'   => $im->referrer_name,
-                    'total_patients'  => 0,
-                    'month_patients'  => 0,
-                    'total_income'    => 0,
-                    'month_income'    => $im->month_income,
-                ];
-            }
-        }
-
-        return response()->json(array_values($merged));
+        return response()->json($stats);
     }
 
     /**
@@ -249,13 +228,17 @@ class StatsController extends Controller
      */
     public function topByDemand()
     {
-        $data = ProcedureItem::select(
+        $now = Carbon::now();
+
+        $data = ProcedureItem::whereHas('procedure.medicalEvaluation', function ($query) {
+                $query->confirmado();
+            })
+            ->whereMonth('created_at', $now->month)
+            ->whereYear('created_at', $now->year)
+            ->select(
                 'item_name',
                 DB::raw('COUNT(*) as total_count')
             )
-            // Filtro para el mes y año en curso
-            ->whereMonth('created_at', Carbon::now()->month)
-            ->whereYear('created_at', Carbon::now()->year)
             ->groupBy('item_name')
             ->orderByDesc('total_count')
             ->limit(5)
@@ -269,13 +252,17 @@ class StatsController extends Controller
      */
     public function topByIncome()
     {
-        $data = ProcedureItem::select(
+        $now = Carbon::now();
+
+        $data = ProcedureItem::whereHas('procedure.medicalEvaluation', function ($query) {
+                $query->confirmado();
+            })
+            ->whereMonth('created_at', $now->month)
+            ->whereYear('created_at', $now->year)
+            ->select(
                 'item_name',
                 DB::raw('SUM(price) as total_revenue')
             )
-            // Filtro para el mes y año en curso
-            ->whereMonth('created_at', Carbon::now()->month)
-            ->whereYear('created_at', Carbon::now()->year)
             ->groupBy('item_name')
             ->orderByDesc('total_revenue')
             ->limit(5)

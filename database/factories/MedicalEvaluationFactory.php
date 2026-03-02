@@ -44,4 +44,37 @@ class MedicalEvaluationFactory extends Factory
             'status'                   => MedicalEvaluation::STATUS_EN_ESPERA,
         ];
     }
+
+    public function confirmado(): static
+    {
+        return $this->state(function () {
+            return [
+                'status' => MedicalEvaluation::STATUS_CONFIRMADO,
+                'confirmed_at' => now()->subDays(rand(0, 60)),
+                'canceled_at' => null,
+            ];
+        });
+    }
+
+    public function cancelado(): static
+    {
+        return $this->state(function () {
+            return [
+                'status' => MedicalEvaluation::STATUS_CANCELADO,
+                'canceled_at' => now()->subDays(rand(0, 60)),
+                'confirmed_at' => null,
+            ];
+        });
+    }
+
+    public function enEspera(): static
+    {
+        return $this->state(function () {
+            return [
+                'status' => MedicalEvaluation::STATUS_EN_ESPERA,
+                'confirmed_at' => null,
+                'canceled_at' => null,
+            ];
+        });
+    }
 }
