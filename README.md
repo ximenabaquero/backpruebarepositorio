@@ -1,4 +1,4 @@
-# XIMCA — Backend
+# XIMCA · Backend
 ### API REST · Laravel 11 · Sanctum · MySQL
 
 ![Laravel](https://img.shields.io/badge/Laravel-11.x-FF2D20?style=flat&logo=laravel&logoColor=white)
