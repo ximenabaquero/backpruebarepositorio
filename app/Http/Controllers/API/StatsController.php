@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Patient;
 use App\Models\Procedure;
 use App\Models\ProcedureItem;
+use App\Models\MedicalEvaluation;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+
 
 class StatsController extends Controller
 {
