@@ -39,4 +39,19 @@ class StorePatientRequest extends FormRequest
             'date_of_birth' => ['required', 'date', 'before:today'],
         ];
     }
+
+    public function messages(): array
+    {
+        return [
+            'first_name.required'   => 'El nombre es obligatorio.',
+            'last_name.required'    => 'El apellido es obligatorio.',
+            'cellphone.required'    => 'El celular es obligatorio.',
+            'biological_sex.required' => 'El sexo biológico es obligatorio.',
+            'biological_sex.in'     => 'El sexo biológico debe ser Femenino, Masculino u Otro.',
+            'cedula.required'       => 'La cédula es obligatoria.',
+            'cedula.unique'         => 'Ya existe un paciente registrado con esa cédula.',
+            'date_of_birth.required' => 'La fecha de nacimiento es obligatoria.',
+            'date_of_birth.before'  => 'La fecha de nacimiento debe ser anterior a hoy.',
+        ];
+    }
 }
