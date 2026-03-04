@@ -42,27 +42,29 @@ class MedicalEvaluationController extends Controller
             // Obtener edad del paciente en el momento de la evaluación
             $patient = Patient::findOrFail($data['patient_id']);
             $patientAge = $patient->age; // usa getAgeAttribute()
-ion::create([
-                    'user_id'                  => $user->id,
-                    'patient_id'         
+
             $patientSignature = $data['patient_signature'] ?? null;
             $status = $patientSignature
                 ? MedicalEvaluation::STATUS_CONFIRMADO
                 : MedicalEvaluation::STATUS_EN_ESPERA;
 
-            $medicalEvaluation = DB::transaction(function () use ($data, $bmi, $bmiStatus, $patientAge, $user, $patientSignature, $status) {
-                return MedicalEvaluat      => $data['patient_id'],
-                    'medical_background'       => $data['medical_background'],
-                    'weight'                   => $data['weight'],
-                    'height'                   => $data['height'],
-                    'bmi'                      => $bmi,
-                    'bmi_status'               => $bmiStatus,
-                    'referrer_name'            => $user->name,
-                    'patient_age_at_evaluation'=> $patientAge,
-                    'status'                   => $status,
-                    'patient_signature'        => $patientSignature,
-                    'confirmed_at'             => $patientSignature ? now() : null,
-                    'confirmed_by_user_id'     => $patientSignature ? $user->id : null,
+            $medicalEvaluation = DB::transaction(function () use (
+                $data, $bmi, $bmiStatus, $patientAge, $user, $patientSignature, $status
+            ) {
+                return MedicalEvaluation::create([
+                    'user_id'                   => $user->id,
+                    'patient_id'                => $data['patient_id'],
+                    'medical_background'        => $data['medical_background'],
+                    'weight'                    => $data['weight'],
+                    'height'                    => $data['height'],
+                    'bmi'                       => $bmi,
+                    'bmi_status'                => $bmiStatus,
+                    'referrer_name'             => $user->name,
+                    'patient_age_at_evaluation' => $patientAge,
+                    'status'                    => $status,
+                    'patient_signature'         => $patientSignature,
+                    'confirmed_at'              => $patientSignature ? now() : null,
+                    'confirmed_by_user_id'      => $patientSignature ? $user->id : null,
                 ]);
             });
 
