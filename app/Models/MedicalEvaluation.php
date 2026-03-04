@@ -30,6 +30,7 @@ class MedicalEvaluation extends Model
         'confirmed_by_user_id',
         'canceled_at',
         'canceled_by_user_id',
+        'patient_signature',
     ];
 
     protected function casts(): array
@@ -54,6 +55,11 @@ class MedicalEvaluation extends Model
     public function isCancelado()
     {
         return $this->status === self::STATUS_CANCELADO;
+    }
+
+    public function scopeConfirmado($query)
+    {
+        return $query->where('status', self::STATUS_CONFIRMADO);
     }
 
     /* Relaciones */

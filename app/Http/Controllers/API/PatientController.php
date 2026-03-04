@@ -98,4 +98,50 @@ class PatientController extends Controller
         }
     }
 
+   // ACTUALIZAR PACIENTE
+    public function update(Request $request, Patient $patient)
+    {
+        try {
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json(['message' => 'No autenticado'], 401);
+            }
+
+            if ($user->status !== User::STATUS_ACTIVE) {
+                return response()->json([
+                    'message' => 'Tu cuenta no está activa. No puedes modificar pacientes.'
+                ], 403);
+            }
+
+            $request->validate([
+                'first_name'     => 'sometimes|string|max:100',
+                'last_name'      => 'sometimes|string|max:100',
+                'cellphone'      => 'sometimes|string|max:15',
+                'date_of_birth'  => 'sometimes|date',
+                'biological_sex' => 'sometimes|string|in:Masculino,Femenino,Otro',
+                'cedula'         => 'sometimes|string|max:20|unique:patients,cedula,' . $patient->id,
+            ]);
+
+            $patient->update($request->only([
+                'first_name',
+                'last_name',
+                'cellphone',
+                'date_of_birth',
+                'biological_sex',
+                'cedula',
+            ]));
+
+            return response()->json([
+                'message' => 'Paciente actualizado correctamente',
+                'data'    => $patient,
+            ]);
+
+        } catch (\Throwable $th) {
+            return response()->json([
+                'error'   => 'Error interno del servidor',
+                'details' => $th->getMessage(),
+            ], 500);
+        }
+    }
+
 }

@@ -10,6 +10,7 @@ use App\Http\Controllers\API\PatientController;
 use App\Http\Controllers\API\ProcedureController;
 use App\Http\Controllers\API\MedicalEvaluationController;
 use App\Http\Controllers\API\StatsController;
+use App\Http\Controllers\API\UserController;
 use Illuminate\Http\Request;
 
 
@@ -71,12 +72,14 @@ use Illuminate\Http\Request;
             Route::get('/patients', [PatientController::class, 'index']);
             Route::get('/patients/{patient}', [PatientController::class, 'show']);
             Route::post('/patients', [PatientController::class, 'store']);
+            Route::put('/patients/{patient}', [PatientController::class, 'update']);
 
             // Valoraciones
             Route::get('/medical-evaluation/patient/{patient}',[MedicalEvaluationController::class, 'showByPatient']);
             Route::get('/medical-evaluations/{id}', [MedicalEvaluationController::class, 'showById']);
             Route::post('/medical-evaluations', [MedicalEvaluationController::class, 'store']);
             Route::put('/medical-evaluations/{medicalEvaluation}', [MedicalEvaluationController::class, 'update']);
+            //estados de valoración (EN_ESPERA, CONFIRMADO, CANCELADO)
             Route::patch('/medical-evaluations/{medicalEvaluation}/confirmar', [MedicalEvaluationController::class, 'confirmar']);
             Route::patch('/medical-evaluations/{medicalEvaluation}/cancelar', [MedicalEvaluationController::class, 'cancelar']);
 
