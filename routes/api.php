@@ -10,6 +10,7 @@ use App\Http\Controllers\API\PatientController;
 use App\Http\Controllers\API\ProcedureController;
 use App\Http\Controllers\API\MedicalEvaluationController;
 use App\Http\Controllers\API\StatsController;
+use App\Http\Controllers\API\UserController;
 use Illuminate\Http\Request;
 
 
@@ -71,6 +72,7 @@ use Illuminate\Http\Request;
             Route::get('/patients', [PatientController::class, 'index']);
             Route::get('/patients/{patient}', [PatientController::class, 'show']);
             Route::post('/patients', [PatientController::class, 'store']);
+            Route::put('/patients/{patient}', [PatientController::class, 'update']);
 
             // Valoraciones
             Route::get('/medical-evaluation/patient/{patient}',[MedicalEvaluationController::class, 'showByPatient']);

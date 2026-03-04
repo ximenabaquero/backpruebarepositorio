@@ -30,6 +30,7 @@ class MedicalEvaluation extends Model
         'confirmed_by_user_id',
         'canceled_at',
         'canceled_by_user_id',
+        'patient_signature',
     ];
 
     protected function casts(): array
