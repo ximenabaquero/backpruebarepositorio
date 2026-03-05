@@ -289,4 +289,44 @@ class StatsController extends Controller
 
         return response()->json($data);
     }
+
+    /**
+     * Tasa de conversión: CONFIRMADO vs CANCELADO
+     */
+    public function conversionRate()
+    {
+        $counts = MedicalEvaluation::selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $confirmed = (int) ($counts['CONFIRMADO'] ?? 0);
+        $canceled  = (int) ($counts['CANCELADO']  ?? 0);
+        $total     = $confirmed + $canceled;
+        $rate      = $total > 0 ? round(($confirmed / $total) * 100, 2) : 0;
+
+        return response()->json([
+            'total'     => $total,
+            'confirmed' => $confirmed,
+            'canceled'  => $canceled,
+            'rate'      => $rate,
+        ]);
+    }
+
+    /**
+     * Pacientes nuevos por mes (últimos 12 meses)
+     */
+    public function patientsMonthly()
+    {
+        $start = Carbon::now()->subMonths(11)->startOfMonth();
+
+        $data = MedicalEvaluation::where('status', 'CONFIRMADO')
+            ->where('created_at', '>=', $start)
+            ->selectRaw('YEAR(created_at) as year, MONTH(created_at) as month, COUNT(DISTINCT patient_id) as new_patients')
+            ->groupBy('year', 'month')
+            ->orderBy('year')
+            ->orderBy('month')
+            ->get();
+
+        return response()->json($data);
+    }
 }

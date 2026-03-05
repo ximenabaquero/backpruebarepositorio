@@ -13,7 +13,13 @@ class PatientController extends Controller
     // LISTAR PACIENTES
     public function index(Request $request)
     {
+        $user = auth()->user();
         $query = Patient::query();
+
+        // REMITENTE solo ve sus propios pacientes
+        if ($user->isRemitente()) {
+            $query->where('user_id', $user->id);
+        }
 
         if ($request->filled('search')) {
             $search = trim((string) $request->query('search'));
@@ -34,6 +40,11 @@ class PatientController extends Controller
     public function show(Patient $patient)
     {
         try {
+            $user = auth()->user();
+            if ($user->isRemitente() && $patient->user_id !== $user->id) {
+                return response()->json(['message' => 'No autorizado'], 403);
+            }
+
             $patient->load([
                 'medicalEvaluations.procedures.items',
                 'user',
@@ -111,6 +122,10 @@ class PatientController extends Controller
                 return response()->json([
                     'message' => 'Tu cuenta no está activa. No puedes modificar pacientes.'
                 ], 403);
+            }
+
+            if ($user->isRemitente() && $patient->user_id !== $user->id) {
+                return response()->json(['message' => 'No autorizado'], 403);
             }
 
             $request->validate([

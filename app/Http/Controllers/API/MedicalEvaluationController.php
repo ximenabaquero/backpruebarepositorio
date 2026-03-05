@@ -43,13 +43,8 @@ class MedicalEvaluationController extends Controller
             $patient = Patient::findOrFail($data['patient_id']);
             $patientAge = $patient->age; // usa getAgeAttribute()
 
-            $patientSignature = $data['patient_signature'] ?? null;
-            $status = $patientSignature
-                ? MedicalEvaluation::STATUS_CONFIRMADO
-                : MedicalEvaluation::STATUS_EN_ESPERA;
-
             $medicalEvaluation = DB::transaction(function () use (
-                $data, $bmi, $bmiStatus, $patientAge, $user, $patientSignature, $status
+                $data, $bmi, $bmiStatus, $patientAge, $user
             ) {
                 return MedicalEvaluation::create([
                     'user_id'                   => $user->id,
@@ -61,10 +56,7 @@ class MedicalEvaluationController extends Controller
                     'bmi_status'                => $bmiStatus,
                     'referrer_name'             => $user->name,
                     'patient_age_at_evaluation' => $patientAge,
-                    'status'                    => $status,
-                    'patient_signature'         => $patientSignature,
-                    'confirmed_at'              => $patientSignature ? now() : null,
-                    'confirmed_by_user_id'      => $patientSignature ? $user->id : null,
+                    'status'                    => MedicalEvaluation::STATUS_EN_ESPERA,
                 ]);
             });
 
@@ -94,6 +86,10 @@ class MedicalEvaluationController extends Controller
                 return response()->json([
                     'message' => 'Tu cuenta no está activa. No puedes actualizar valoraciones.'
                 ], 403);
+            }
+
+            if ($user->isRemitente() && $medicalEvaluation->patient->user_id !== $user->id) {
+                return response()->json(['message' => 'No autorizado'], 403);
             }
 
             $data = $request->validated();
@@ -148,7 +144,7 @@ class MedicalEvaluationController extends Controller
     }
 
     // CONFIRMAR VALORACIÓN
-    public function confirmar(MedicalEvaluation $medicalEvaluation)
+    public function confirmar(Request $request, MedicalEvaluation $medicalEvaluation)
     {
         $user = auth()->user();
         if (!$user) {
@@ -163,6 +159,15 @@ class MedicalEvaluationController extends Controller
             ], 403);
         }
 
+        if ($user->isRemitente() && $medicalEvaluation->patient->user_id !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $request->validate([
+            'terms_accepted'    => ['required', 'accepted'],
+            'patient_signature' => ['required', 'string'],
+        ]);
+
         try {
             if ($medicalEvaluation->isConfirmado()) {
                 return response()->json([
@@ -171,12 +176,14 @@ class MedicalEvaluationController extends Controller
                 ]);
             }
 
-            DB::transaction(function () use ($medicalEvaluation) {
-                $medicalEvaluation->status = MedicalEvaluation::STATUS_CONFIRMADO;
-                $medicalEvaluation->confirmed_at = now();
+            DB::transaction(function () use ($medicalEvaluation, $request) {
+                $medicalEvaluation->status               = MedicalEvaluation::STATUS_CONFIRMADO;
+                $medicalEvaluation->confirmed_at         = now();
                 $medicalEvaluation->confirmed_by_user_id = auth()->id();
-                $medicalEvaluation->canceled_at = null;
-                $medicalEvaluation->canceled_by_user_id = null;
+                $medicalEvaluation->patient_signature    = $request->patient_signature;
+                $medicalEvaluation->terms_accepted_at    = now();
+                $medicalEvaluation->canceled_at          = null;
+                $medicalEvaluation->canceled_by_user_id  = null;
                 $medicalEvaluation->save();
             });
 
@@ -203,6 +210,10 @@ class MedicalEvaluationController extends Controller
             return response()->json([
                 'message' => 'Tu cuenta no está activa. No puedes cancelar valoraciones.'
             ], 403);
+        }
+
+        if ($user->isRemitente() && $medicalEvaluation->patient->user_id !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
         }
 
         try {
@@ -245,6 +256,13 @@ class MedicalEvaluationController extends Controller
             return response()->json([
                 'message' => 'Tu cuenta no está activa.'
             ], 403);
+        }
+
+        if ($user->isRemitente()) {
+            $patient = Patient::find($patientId);
+            if (!$patient || $patient->user_id !== $user->id) {
+                return response()->json(['message' => 'No autorizado'], 403);
+            }
         }
 
         $evaluation = MedicalEvaluation::with([
@@ -299,6 +317,10 @@ class MedicalEvaluationController extends Controller
                 return response()->json([
                     'message' => 'No se encontró la valoración médica solicitada',
                 ], 404);
+            }
+
+            if ($user->isRemitente() && $evaluation->patient->user_id !== $user->id) {
+                return response()->json(['message' => 'No autorizado'], 403);
             }
 
             return response()->json([

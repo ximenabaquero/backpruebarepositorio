@@ -24,8 +24,6 @@ class StoreMedicalEvaluationRequest extends FormRequest
             // Antecedentes médicos
             'medical_background' => ['required', 'string'],
 
-            // Firma digital de la paciente (base64 PNG, opcional al crear)
-            'patient_signature' => ['nullable', 'string'],
         ];
     }
 }

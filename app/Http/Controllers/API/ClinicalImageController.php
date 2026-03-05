@@ -32,6 +32,10 @@ class ClinicalImageController extends Controller
     public function store(Request $request)
     {
         try {
+            if (auth()->user()->isRemitente()) {
+                return response()->json(['message' => 'Solo ADMIN puede gestionar imágenes clínicas'], 403);
+            }
+
             $request->validate([
                 'title' => 'required|string|max:100',
                 'description' => 'nullable|string',
@@ -63,6 +67,10 @@ class ClinicalImageController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            if (auth()->user()->isRemitente()) {
+                return response()->json(['message' => 'Solo ADMIN puede gestionar imágenes clínicas'], 403);
+            }
+
             $item = ClinicalImage::findOrFail($id);
 
             // 1. Validación flexible (nada obligatorio)
@@ -113,6 +121,10 @@ class ClinicalImageController extends Controller
     public function destroy($id)
     {
         try {
+            if (auth()->user()->isRemitente()) {
+                return response()->json(['message' => 'Solo ADMIN puede gestionar imágenes clínicas'], 403);
+            }
+
             $item = ClinicalImage::findOrFail($id);
 
             Storage::disk('public')->delete([

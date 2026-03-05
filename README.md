@@ -150,25 +150,27 @@ USERS → crea → PATIENTS → tiene → MEDICAL_EVALUATIONS → contiene → P
 | `POST`   | `/clinical-images`                    | Subir par de imágenes antes/después            |
 | `PUT`    | `/clinical-images/{id}`               | Actualizar imágenes (reemplaza archivos)       |
 | `DELETE` | `/clinical-images/{id}`               | Eliminar imágenes (limpia storage)             |
-| `GET`    | `/stats/summary`                      | KPIs del mes actual vs mes anterior            |
-| `GET`    | `/stats/referrer-stats`               | Pacientes e ingresos por remitente             |
-| `GET`    | `/stats/income-monthly`               | Ingresos mensuales históricos                  |
-| `GET`    | `/stats/income-weekly`                | Ingresos de la semana actual por día           |
-| `GET`    | `/stats/procedures/top-demand`        | Top 5 procedimientos por cantidad (mes)        |
-| `GET`    | `/stats/procedures/top-income`        | Top 5 procedimientos por ingresos (mes)        |
-| `GET`    | `/stats/income-by-procedure`          | Ingresos históricos por tipo de procedimiento  |
 
 ### Solo ADMIN (`auth:sanctum` + `admin`)
 
-| Método  | Ruta                         | Descripción                              |
-| ------- | ---------------------------- | ---------------------------------------- |
-| `GET`   | `/remitentes`                | Listar todos los remitentes              |
-| `POST`  | `/remitentes`                | Crear nuevo remitente                    |
-| `PUT`   | `/admin/{id}`                | Actualizar datos del admin (solo propio) |
-| `PUT`   | `/remitentes/{id}`           | Actualizar datos de remitente            |
-| `PATCH` | `/remitentes/{id}/activar`   | Activar remitente                        |
-| `PATCH` | `/remitentes/{id}/inactivar` | Pausar remitente temporalmente           |
-| `PATCH` | `/remitentes/{id}/despedir`  | Marcar remitente como despedido          |
+| Método  | Ruta                                   | Descripción                              |
+| ------- | -------------------------------------- | ---------------------------------------- |
+| `GET`   | `/remitentes`                          | Listar todos los remitentes              |
+| `POST`  | `/remitentes`                          | Crear nuevo remitente                    |
+| `PUT`   | `/admin/{id}`                          | Actualizar datos del admin (solo propio) |
+| `PUT`   | `/remitentes/{id}`                     | Actualizar datos de remitente            |
+| `PATCH` | `/remitentes/{id}/activar`             | Activar remitente                        |
+| `PATCH` | `/remitentes/{id}/inactivar`           | Pausar remitente temporalmente           |
+| `PATCH` | `/remitentes/{id}/despedir`            | Marcar remitente como despedido          |
+| `GET`   | `/stats/summary`                       | KPIs del mes actual vs mes anterior      |
+| `GET`   | `/stats/referrer-stats`                | Pacientes e ingresos por remitente       |
+| `GET`   | `/stats/income-monthly`                | Ingresos mensuales históricos            |
+| `GET`   | `/stats/income-weekly`                 | Ingresos de la semana actual por día     |
+| `GET`   | `/stats/procedures/top-demand`         | Top 5 procedimientos por cantidad        |
+| `GET`   | `/stats/procedures/top-income`         | Top 5 procedimientos por ingresos        |
+| `GET`   | `/stats/income-by-procedure`           | Ingresos históricos por tipo             |
+| `GET`   | `/stats/conversion-rate`               | Tasa de conversión                       |
+| `GET`   | `/stats/patients-monthly`              | Nuevos pacientes por mes                 |
 
 ---
 
@@ -183,9 +185,36 @@ USERS → crea → PATIENTS → tiene → MEDICAL_EVALUATIONS → contiene → P
 
 ### Control de acceso por roles
 
-- **ADMIN** — acceso completo: puede crear/modificar remitentes, ver todas las estadísticas y gestionar el sistema.
-- **REMITENTE** — acceso operativo: puede registrar pacientes y valoraciones solo si su cuenta está `active`. Si está `inactive` o `fired`, el servidor devuelve `403` antes de ejecutar cualquier operación.
+- **ADMIN** — acceso completo: gestiona remitentes, ve estadísticas globales, administra imágenes clínicas y accede a todos los recursos del sistema.
+- **REMITENTE** — acceso restringido a sus propios recursos: solo ve y opera sobre los pacientes, valoraciones y procedimientos que él mismo registró. Si su cuenta está `inactive` o `fired`, el servidor devuelve `403` antes de ejecutar cualquier operación.
 - `AdminMiddleware` — middleware personalizado que valida `isAdmin()` antes de llegar al controlador.
+
+```mermaid
+flowchart TD
+    A([Usuario hace login]) --> B{¿Credenciales válidas?}
+    B -- No --> C[401 - No autenticado]
+    B -- Sí --> D{¿Cuenta activa?}
+    D -- No --> E[403 - Cuenta inactiva]
+    D -- Sí --> F[Recibe token Bearer]
+
+    F --> G([Hace una petición])
+
+    G --> H{¿Token válido?}
+    H -- No --> I[401 - No autenticado]
+    H -- Sí --> J{¿La ruta es\nsolo ADMIN?}
+
+    J -- Sí --> K{¿role = ADMIN?}
+    K -- No --> L[403 - Sin permiso]
+    K -- Sí --> M[Gestión de remitentes\nEstadísticas del negocio]
+
+    J -- No --> N{¿role?}
+
+    N -- ADMIN --> O[Ve y gestiona todo]
+
+    N -- REMITENTE --> P{¿Es su propio recurso?}
+    P -- No --> Q[403 - Sin permiso]
+    P -- Sí --> R[Pacientes propios\nValoraciones propias\nProcedimientos propios]
+```
 
 ### Validación con Form Requests
 

@@ -7,6 +7,7 @@ use App\Http\Requests\StoreProcedureRequest;
 use App\Http\Requests\UpdateProcedureRequest;
 use App\Models\Procedure;
 use App\Models\MedicalEvaluation;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -15,10 +16,18 @@ class ProcedureController extends Controller
     // LISTAR PROCEDIMIENTOS
     public function index(Request $request)
     {
+        $user = auth()->user();
         $query = Procedure::with([
             'items',
             'medicalEvaluation.patient',
         ]);
+
+        // REMITENTE solo ve procedimientos de sus propias evaluaciones
+        if ($user->isRemitente()) {
+            $query->whereHas('medicalEvaluation.patient', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            });
+        }
 
         if ($request->filled('medical_evaluation_id')) {
             $query->where(
@@ -35,10 +44,15 @@ class ProcedureController extends Controller
     // VER PROCEDIMIENTO
     public function show(Procedure $procedure)
     {
+        $user = auth()->user();
         $procedure->load([
             'items',
             'medicalEvaluation.patient',
         ]);
+
+        if ($user->isRemitente() && $procedure->medicalEvaluation->patient->user_id !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
 
         return response()->json($procedure);
     }
@@ -52,6 +66,11 @@ class ProcedureController extends Controller
             $medicalEvaluation = MedicalEvaluation::findOrFail(
                 (int) $data['medical_evaluation_id']
             );
+
+            $user = auth()->user();
+            if ($user->isRemitente() && $medicalEvaluation->patient->user_id !== $user->id) {
+                return response()->json(['message' => 'No autorizado'], 403);
+            }
 
             $brandSlug = config('app.brand_slug');
 
@@ -98,6 +117,13 @@ class ProcedureController extends Controller
     // ACTUALIZAR PROCEDIMIENTO
     public function update(UpdateProcedureRequest $request, Procedure $procedure)
     {
+        $user = auth()->user();
+        $procedure->load('medicalEvaluation.patient');
+
+        if ($user->isRemitente() && $procedure->medicalEvaluation->patient->user_id !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
         $data = $request->validated();
 
         DB::transaction(function () use ($data, $procedure) {

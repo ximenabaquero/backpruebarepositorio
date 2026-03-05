@@ -31,13 +31,15 @@ class MedicalEvaluation extends Model
         'canceled_at',
         'canceled_by_user_id',
         'patient_signature',
+        'terms_accepted_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'confirmed_at' => 'datetime',
-            'canceled_at' => 'datetime',
+            'confirmed_at'     => 'datetime',
+            'canceled_at'      => 'datetime',
+            'terms_accepted_at' => 'datetime',
         ];
     }
 

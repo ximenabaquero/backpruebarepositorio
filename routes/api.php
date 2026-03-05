@@ -48,7 +48,7 @@ use Illuminate\Http\Request;
         // ======================
         Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
-            // Admin 
+            // Admin
             Route::get('/remitentes', [UserController::class, 'listRemitentes']);
             Route::post('/remitentes', [UserController::class, 'createRemitente']);
             Route::put('/admin/{id}', [UserController::class, 'updateAdmin']);
@@ -56,6 +56,19 @@ use Illuminate\Http\Request;
             Route::patch('/remitentes/{id}/activar', [UserController::class, 'activarRemitente']);
             Route::patch('/remitentes/{id}/inactivar', [UserController::class, 'inactivarRemitente']);
             Route::patch('/remitentes/{id}/despedir', [UserController::class, 'despedirRemitente']);
+
+            // Estadisticas (solo ADMIN)
+            Route::prefix('stats')->group(function () {
+                Route::get('/summary', [StatsController::class, 'summary']);
+                Route::get('/referrer-stats', [StatsController::class, 'referrerStats']);
+                Route::get('/income-monthly', [StatsController::class, 'incomeMonthly']);
+                Route::get('/income-weekly', [StatsController::class, 'incomeWeekly']);
+                Route::get('/procedures/top-demand', [StatsController::class, 'topByDemand']);
+                Route::get('/procedures/top-income', [StatsController::class, 'topByIncome']);
+                Route::get('/income-by-procedure', [StatsController::class, 'incomeByProcedureType']);
+                Route::get('/conversion-rate', [StatsController::class, 'conversionRate']);
+                Route::get('/patients-monthly', [StatsController::class, 'patientsMonthly']);
+            });
         });
 
         Route::middleware('auth:sanctum')->group(function () {
@@ -109,16 +122,6 @@ use Illuminate\Http\Request;
             //     Route::post('/{appointment}/complete', [AppointmentController::class, 'completeAppointment']);
             // });
 
-            Route::prefix('stats')->group(function () {
-            // Estadisticas
-                Route::get('/summary', [StatsController::class, 'summary']);
-                Route::get('/referrer-stats', [StatsController::class, 'referrerStats']);
-                Route::get('/income-monthly', [StatsController::class, 'incomeMonthly']);
-                Route::get('/income-weekly', [StatsController::class, 'incomeWeekly']);
-                Route::get('/procedures/top-demand', [StatsController::class, 'topByDemand']);
-                Route::get('/procedures/top-income', [StatsController::class, 'topByIncome']);
-                Route::get('/income-by-procedure', [StatsController::class, 'incomeByProcedureType']);
-            });
         });
 });
 
