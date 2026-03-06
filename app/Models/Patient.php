@@ -9,6 +9,13 @@ class Patient extends Model
 {
     use HasFactory;
 
+    const DOCUMENT_TYPES = [
+    'Cédula de Ciudadanía',
+    'Cédula de Extranjería',
+    'Pasaporte',
+    'Tarjeta de Identidad',
+    ];
+
     // Atributos
     protected $fillable = [
         'user_id',
@@ -17,6 +24,7 @@ class Patient extends Model
         'cellphone',
         'date_of_birth',
         'biological_sex',
+        'document_type', 
         'cedula',
     ];
 

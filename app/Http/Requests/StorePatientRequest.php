@@ -33,9 +33,10 @@ class StorePatientRequest extends FormRequest
             // Datos del paciente
             'first_name' => ['required', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
-            'cellphone' => ['required', 'string', 'max:15'],
+            'cellphone' => ['required', 'string', 'max:25'],
             'biological_sex' => ['required', 'string', 'in:Femenino,Masculino,Otro'],
-            'cedula' => [ 'required', 'string', 'max:15', 'unique:patients,cedula'],
+            'cedula' => ['required', 'string', 'max:15', 'unique:patients,cedula'],
+            'document_type' => ['required', 'string', 'in:Cédula de Ciudadanía,Cédula de Extranjería,Pasaporte,Tarjeta de Identidad'],
             'date_of_birth' => ['required', 'date', 'before:today'],
         ];
     }
