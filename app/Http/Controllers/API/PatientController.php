@@ -88,11 +88,12 @@ class PatientController extends Controller
             // Crear nuevo paciente
             $patient = Patient::create([
                 'user_id'        => $user->id,
-                'first_name'     => $data['first_name'],
-                'last_name'      => $data['last_name'],
+                'first_name'     => $this->formatName($data['first_name']),
+                'last_name'      => $this->formatName($data['last_name']),
                 'cellphone'      => $data['cellphone'],
                 'date_of_birth'  => $data['date_of_birth'], 
                 'biological_sex' => $data['biological_sex'],
+                'document_type'      => $data['document_type'], 
                 'cedula'         => $data['cedula'],
             ]);
 
@@ -128,23 +129,25 @@ class PatientController extends Controller
                 return response()->json(['message' => 'No autorizado'], 403);
             }
 
-            $request->validate([
+            $validated = $request->validate([
                 'first_name'     => 'sometimes|string|max:100',
                 'last_name'      => 'sometimes|string|max:100',
-                'cellphone'      => 'sometimes|string|max:15',
+                'cellphone'      => 'sometimes|string|max:25',
                 'date_of_birth'  => 'sometimes|date',
                 'biological_sex' => 'sometimes|string|in:Masculino,Femenino,Otro',
+                'document_type'  => 'sometimes|string|in:' . implode(',', Patient::DOCUMENT_TYPES),
                 'cedula'         => 'sometimes|string|max:20|unique:patients,cedula,' . $patient->id,
             ]);
 
-            $patient->update($request->only([
-                'first_name',
-                'last_name',
-                'cellphone',
-                'date_of_birth',
-                'biological_sex',
-                'cedula',
-            ]));
+            if (isset($validated['first_name'])) {
+                $validated['first_name'] = $this->formatName($validated['first_name']);
+            }
+
+            if (isset($validated['last_name'])) {
+                $validated['last_name'] = $this->formatName($validated['last_name']);
+            }
+
+            $patient->update($validated);
 
             return response()->json([
                 'message' => 'Paciente actualizado correctamente',
@@ -159,4 +162,12 @@ class PatientController extends Controller
         }
     }
 
+    private function formatName(string $name): string
+    {
+    
+        return implode(' ', array_map(
+            fn($word) => mb_strtoupper(mb_substr($word, 0, 1)) . mb_strtolower(mb_substr($word, 1)),
+            explode(' ', trim($name))
+        ));
+    }
 }

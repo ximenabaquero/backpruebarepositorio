@@ -23,7 +23,7 @@ class ClinicSeeder extends Seeder
         // Crear remitentes activos
         $remitentesActivos = User::factory()
             ->remitente()
-            ->count(5)
+            ->count(3)
             ->create();
 
         // Crear remitentes inactivos
@@ -47,14 +47,14 @@ class ClinicSeeder extends Seeder
 
             // Pacientes del admin
             $patientsAdmin = Patient::factory() 
-                ->count(5) 
+                ->count(3) 
                 ->create([ 
                     'user_id' => $admin->id, 
                 ]);
 
             // Pacientes de remitentes activos
             $patientsRemitentes = Patient::factory() 
-                ->count(10) 
+                ->count(5) 
                 ->create();
 
             // Unir ambas colecciones 

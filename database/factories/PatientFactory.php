@@ -21,6 +21,7 @@ class PatientFactory extends Factory
             'cellphone'      => $this->faker->numerify('##########'), // 10 dígitos
             'date_of_birth'  => $this->faker->dateTimeBetween('-65 years', '-18 years')->format('Y-m-d'),
             'biological_sex' => $this->faker->randomElement(['Femenino', 'Masculino', 'Otro']),
+            'document_type'      => $this->faker->randomElement(Patient::DOCUMENT_TYPES),
             'cedula'         => $this->faker->unique()->numerify('##########'),
         ];
     }
