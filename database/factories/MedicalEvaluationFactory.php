@@ -12,10 +12,9 @@ class MedicalEvaluationFactory extends Factory
 
     public function definition(): array
     {
-        $weight = $this->faker->numberBetween(50, 90); // kg
-        $height = $this->faker->randomFloat(2, 1.50, 1.90); // metros
-
-        $bmi = round($weight / ($height * $height), 2);
+        $weight = $this->faker->numberBetween(50, 90);
+        $height = $this->faker->randomFloat(2, 1.50, 1.90);
+        $bmi    = round($weight / ($height * $height), 2);
 
         $bmiStatus = match (true) {
             $bmi < 16.0 => 'Delgadez severa (< 16.0)',
@@ -25,56 +24,48 @@ class MedicalEvaluationFactory extends Factory
             $bmi < 30.0 => 'Sobrepeso (25.0–29.9)',
             $bmi < 35.0 => 'Obesidad grado I (30.0–34.9)',
             $bmi < 40.0 => 'Obesidad grado II (35.0–39.9)',
-            default => 'Obesidad grado III (≥ 40)',
+            default     => 'Obesidad grado III (≥ 40)',
         };
 
-        // Creamos un paciente con su user_id
-        $patient = Patient::factory()->create();
-
+        // ✅ Ya NO crea paciente aquí — se recibe desde el seeder via create([...])
         return [
-            'user_id'                  => $patient->user_id, 
-            'patient_id'               => $patient->id,
-            'medical_background'       => $this->faker->sentence(),
-            'weight'                   => $weight,
-            'height'                   => $height,
-            'bmi'                      => $bmi,
-            'bmi_status'               => $bmiStatus,
-            'referrer_name'            => $patient->user?->name, 
-            'patient_age_at_evaluation'=> $patient->age,
-            'status'                   => MedicalEvaluation::STATUS_EN_ESPERA,
+            'user_id'                   => null, // sobreescrito desde el seeder
+            'patient_id'                => null, // sobreescrito desde el seeder
+            'medical_background'        => $this->faker->sentence(),
+            'weight'                    => $weight,
+            'height'                    => $height,
+            'bmi'                       => $bmi,
+            'bmi_status'                => $bmiStatus,
+            'referrer_name'             => $this->faker->name(),
+            'patient_age_at_evaluation' => $this->faker->numberBetween(18, 65),
+            'status'                    => MedicalEvaluation::STATUS_EN_ESPERA,
         ];
     }
 
     public function confirmado(): static
     {
-        return $this->state(function () {
-            return [
-                'status' => MedicalEvaluation::STATUS_CONFIRMADO,
-                'confirmed_at' => now()->subDays(rand(0, 60)),
-                'canceled_at' => null,
-            ];
-        });
+        return $this->state(fn() => [
+            'status'       => MedicalEvaluation::STATUS_CONFIRMADO,
+            'confirmed_at' => now()->subDays(rand(0, 30)),
+            'canceled_at'  => null,
+        ]);
     }
 
     public function cancelado(): static
     {
-        return $this->state(function () {
-            return [
-                'status' => MedicalEvaluation::STATUS_CANCELADO,
-                'canceled_at' => now()->subDays(rand(0, 60)),
-                'confirmed_at' => null,
-            ];
-        });
+        return $this->state(fn() => [
+            'status'       => MedicalEvaluation::STATUS_CANCELADO,
+            'canceled_at'  => now()->subDays(rand(0, 30)),
+            'confirmed_at' => null,
+        ]);
     }
 
     public function enEspera(): static
     {
-        return $this->state(function () {
-            return [
-                'status' => MedicalEvaluation::STATUS_EN_ESPERA,
-                'confirmed_at' => null,
-                'canceled_at' => null,
-            ];
-        });
+        return $this->state(fn() => [
+            'status'       => MedicalEvaluation::STATUS_EN_ESPERA,
+            'confirmed_at' => null,
+            'canceled_at'  => null,
+        ]);
     }
 }

@@ -8,106 +8,89 @@ use App\Models\Patient;
 use App\Models\MedicalEvaluation;
 use App\Models\Procedure;
 use App\Models\ProcedureItem;
+use Carbon\Carbon;
+use Faker\Factory as FakerFactory;
 
 class ClinicSeeder extends Seeder
 {
+    private $faker;
+
+    public function __construct()
+    {
+        $this->faker = FakerFactory::create();
+    }
+
     public function run()
     {
-        // Crear admin y guardarlo en variable
-        $admin = User::factory()
-            ->admin()
-            ->create([
-                'email' => 'admin@clinic.com',
-            ]);
+        // ── Usuarios ─────────────────────────────────────────────
+        $admin = User::factory()->admin()->create([
+            'email' => 'admin@clinic.com',
+        ]);
 
-        // Crear remitentes activos
-        $remitentesActivos = User::factory()
-            ->remitente()
-            ->count(3)
-            ->create();
+        $remitentesActivos    = User::factory()->remitente()->count(3)->create();
+        $remitentesInactivos  = User::factory()->remitente()->inactivo()->count(2)->create();
+        $remitentesDespedidos = User::factory()->remitente()->despedido()->count(2)->create();
 
-        // Crear remitentes inactivos
-        $remitentesInactivos = User::factory()
-            ->remitente()
-            ->inactivo()
-            ->count(2)
-            ->create();
+        // ── Pacientes ─────────────────────────────────────────────
+        $patientsAdmin      = Patient::factory()->count(3)->create(['user_id' => $admin->id]);
+        $patientsRemitentes = Patient::factory()->count(5)->create();
+        $patients           = $patientsAdmin->concat($patientsRemitentes);
 
-        // Crear remitentes despedidos
-        $remitentesDespedidos = User::factory()
-            ->remitente()
-            ->despedido()
-            ->count(2)
-            ->create();
+        // Meses disponibles: enero del año actual → mes actual
+        $now             = Carbon::now();
+        $currentYear     = $now->year;
+        $currentMonth    = $now->month;
+        $availableMonths = range(1, $currentMonth); // [1, 2, ..., N]
 
-        // Juntar todos los remitentes en una colección
-        $remitentes = $remitentesActivos
-            ->concat($remitentesInactivos)
-            ->concat($remitentesDespedidos);
-
-            // Pacientes del admin
-            $patientsAdmin = Patient::factory() 
-                ->count(3) 
-                ->create([ 
-                    'user_id' => $admin->id, 
-                ]);
-
-            // Pacientes de remitentes activos
-            $patientsRemitentes = Patient::factory() 
-                ->count(5) 
-                ->create();
-
-            // Unir ambas colecciones 
-            $patients = $patientsAdmin->concat($patientsRemitentes);
-
+        // ── Evaluaciones y procedimientos ─────────────────────────
         foreach ($patients as $patient) {
-            // Cada paciente tiene 1–2 evaluaciones médicas
-            $medicalEvaluations = collect();
+            // Más registros por paciente para tener datos ricos en las gráficas
+            $count = rand(2, 4);
 
-                $count = rand(1, 2);
+            for ($i = 0; $i < $count; $i++) {
+                $randomState = rand(1, 100);
 
-                for ($i = 0; $i < $count; $i++) {
-
-                    $randomState = rand(1, 100);
-
-                    if ($randomState <= 60) {
-                        $factory = MedicalEvaluation::factory()->confirmado(); // 60%
-                    } elseif ($randomState <= 85) {
-                        $factory = MedicalEvaluation::factory()->cancelado(); // 25%
-                    } else {
-                        $factory = MedicalEvaluation::factory()->enEspera(); // 15%
-                    }
-
-                    $medicalEvaluations->push(
-                        $factory->create([
-                            'user_id'    => $patient->user_id,
-                            'patient_id' => $patient->id,
-                        ])
-                    );
+                if ($randomState <= 60) {
+                    $factory = MedicalEvaluation::factory()->confirmado();
+                } elseif ($randomState <= 85) {
+                    $factory = MedicalEvaluation::factory()->cancelado();
+                } else {
+                    $factory = MedicalEvaluation::factory()->enEspera();
                 }
 
-            foreach ($medicalEvaluations as $medical) {
-                // Cada evaluación tiene 1–4 procedimientos
-                if ($medical->isConfirmado()) {
-                    $procedures = Procedure::factory()
-                        ->count(rand(1, 4))
-                        ->create([
-                            'medical_evaluation_id' => $medical->id,
-                            'brand_slug' => config('app.brand_slug'),
-                            'procedure_date' => now()->subDays(rand(0, 60)),
-                        ]);
+                $medical = $factory->create([
+                    'user_id'    => $patient->user_id,
+                    'patient_id' => $patient->id,
+                ]);
 
-                    foreach ($procedures as $procedure) {
-                        $items = ProcedureItem::factory()
-                            ->count(rand(1, 3))
-                            ->create([
-                                'procedure_id' => $procedure->id,
-                            ]);
-                        // Recalcular total del procedimiento
-                        $procedure->update([
-                            'total_amount' => $items->sum('price'),
-                        ]);
-                    }
+                $targetMonth = $this->faker->randomElement($availableMonths);
+                $daysInMonth = Carbon::create($currentYear, $targetMonth, 1)->daysInMonth;
+
+                // Si es el mes actual no pasar del día de hoy
+                $maxDay = ($targetMonth === $currentMonth) ? $now->day : $daysInMonth;
+
+                $procedureDate = Carbon::create(
+                    $currentYear,
+                    $targetMonth,
+                    rand(1, max(1, $maxDay))
+                )->toDateString();
+
+                $procedures = Procedure::factory()
+                    ->count(rand(1, 3))
+                    ->create([
+                        'medical_evaluation_id' => $medical->id,
+                        'brand_slug'            => config('app.brand_slug'),
+                        'procedure_date'        => $procedureDate,
+                    ]);
+
+                foreach ($procedures as $procedure) {
+                    $items = ProcedureItem::factory()
+                        ->count(rand(1, 3))
+                        ->create(['procedure_id' => $procedure->id]);
+
+                    $procedure->update([
+                        'total_amount' => $items->sum('price'),
+                    ]);
                 }
             }
         }
