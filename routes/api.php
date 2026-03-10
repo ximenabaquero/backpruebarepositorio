@@ -11,6 +11,10 @@ use App\Http\Controllers\API\ProcedureController;
 use App\Http\Controllers\API\MedicalEvaluationController;
 use App\Http\Controllers\API\StatsController;
 use App\Http\Controllers\API\UserController;
+use App\Http\Controllers\API\InventoryCategoryController;
+use App\Http\Controllers\API\InventoryPurchaseController;
+use App\Http\Controllers\API\InventoryProductController;
+use App\Http\Controllers\API\InventoryUsageController;
 use Illuminate\Http\Request;
 
 
@@ -72,6 +76,19 @@ use Illuminate\Http\Request;
                 Route::get('/income-monthly', [StatsController::class, 'incomeMonthly']);
                 Route::get('/income-weekly', [StatsController::class, 'incomeWeekly']);
             });
+
+            // Inventario — categorías y productos (solo ADMIN)
+            Route::prefix('inventory')->group(function () {
+                Route::get('/categories', [InventoryCategoryController::class, 'index']);
+                Route::post('/categories', [InventoryCategoryController::class, 'store']);
+                Route::put('/categories/{category}', [InventoryCategoryController::class, 'update']);
+                Route::delete('/categories/{category}', [InventoryCategoryController::class, 'destroy']);
+
+                Route::get('/products', [InventoryProductController::class, 'index']);
+                Route::post('/products', [InventoryProductController::class, 'store']);
+                Route::put('/products/{product}', [InventoryProductController::class, 'update']);
+                Route::delete('/products/{product}', [InventoryProductController::class, 'destroy']);
+            });
         });
 
         Route::middleware('auth:sanctum')->group(function () {
@@ -104,6 +121,19 @@ use Illuminate\Http\Request;
             Route::get('/procedures/{procedure}', [ProcedureController::class, 'show']);
             Route::post('/procedures', [ProcedureController::class, 'store']);
             Route::put('/procedures/{procedure}', [ProcedureController::class, 'update']);
+
+            // Inventario — compras, consumos y resumen (todos los autenticados)
+            Route::prefix('inventory')->group(function () {
+                Route::get('/purchases', [InventoryPurchaseController::class, 'index']);
+                Route::post('/purchases', [InventoryPurchaseController::class, 'store']);
+                Route::put('/purchases/{purchase}', [InventoryPurchaseController::class, 'update']);
+                Route::delete('/purchases/{purchase}', [InventoryPurchaseController::class, 'destroy']);
+                Route::get('/summary', [InventoryPurchaseController::class, 'summary']);
+
+                Route::get('/usages', [InventoryUsageController::class, 'index']);
+                Route::post('/usages', [InventoryUsageController::class, 'store']);
+                Route::delete('/usages/{usage}', [InventoryUsageController::class, 'destroy']);
+            });
 
             // TODO: Descomentar cuando se retome el módulo de citas y Google Calendar
             // // Google Calendar Authentication

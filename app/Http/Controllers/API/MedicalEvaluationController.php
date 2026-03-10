@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateMedicalEvaluationRequest;
 use App\Models\MedicalEvaluation;
 use App\Models\User;
 use App\Models\Patient;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MedicalEvaluationController extends Controller
