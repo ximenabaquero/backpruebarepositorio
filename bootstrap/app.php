@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
 
+        //Trust all proxies (needed for Railway/reverse proxies)
+        $middleware->trustProxies(at: '*');
+
         //Sanctum (cookies + SPA)
         $middleware->api(prepend: [
             EnsureFrontendRequestsAreStateful::class,

@@ -11,6 +11,7 @@ use App\Http\Controllers\API\ProcedureController;
 use App\Http\Controllers\API\MedicalEvaluationController;
 use App\Http\Controllers\API\StatsController;
 use App\Http\Controllers\API\UserController;
+use App\Http\Controllers\API\InventoryController;
 use Illuminate\Http\Request;
 
 
@@ -77,6 +78,39 @@ use Illuminate\Http\Request;
         Route::middleware('auth:sanctum')->group(function () {
 
             Route::get('/me', [AuthController::class, 'me']);
+
+            // ── Inventario ────────────────────────────────────────────────
+            Route::prefix('inventory')->group(function () {
+
+                // Categorías y productos (solo ADMIN gestiona, todos leen)
+                Route::middleware('admin')->group(function () {
+                    Route::post('/categories',        [InventoryController::class, 'categoriesStore']);
+                    Route::put('/categories/{id}',    [InventoryController::class, 'categoriesUpdate']);
+                    Route::delete('/categories/{id}', [InventoryController::class, 'categoriesDestroy']);
+
+                    Route::post('/products',        [InventoryController::class, 'productsStore']);
+                    Route::put('/products/{id}',    [InventoryController::class, 'productsUpdate']);
+                    Route::delete('/products/{id}', [InventoryController::class, 'productsDestroy']);
+                });
+
+                // Lectura libre para ambos roles
+                Route::get('/categories',    [InventoryController::class, 'categoriesIndex']);
+                Route::get('/products',      [InventoryController::class, 'productsIndex']);
+
+                // Compras (ambos roles crean/ven; REMITENTE ve solo las suyas)
+                Route::get('/purchases',        [InventoryController::class, 'purchasesIndex']);
+                Route::post('/purchases',       [InventoryController::class, 'purchasesStore']);
+                Route::put('/purchases/{id}',   [InventoryController::class, 'purchasesUpdate']);
+                Route::delete('/purchases/{id}',[InventoryController::class, 'purchasesDestroy']);
+
+                // Consumos (ambos roles; REMITENTE ve solo los suyos)
+                Route::get('/usages',        [InventoryController::class, 'usagesIndex']);
+                Route::post('/usages',       [InventoryController::class, 'usagesStore']);
+                Route::delete('/usages/{id}',[InventoryController::class, 'usagesDestroy']);
+
+                // Resumen gastos vs ingresos
+                Route::get('/summary', [InventoryController::class, 'summary']);
+            });
             Route::post('/logout', [AuthController::class, 'logout']);
 
             // Imágenes clínicas

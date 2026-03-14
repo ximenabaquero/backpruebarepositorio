@@ -12,31 +12,29 @@ class UserController extends Controller
     // Editar campos del admin
     public function updateAdmin(Request $request, $id)
     {
+        $user = User::findOrFail($id);
+
+        // Verificar que sea admin
+        if ($user->role !== User::ROLE_ADMIN) {
+            return response()->json([
+                'message' => 'Solo se puede modificar un administrador'
+            ], 400);
+        }
+        if (auth()->id() !== $user->id) {
+            return response()->json([
+                'message' => 'Solo puedes modificar tu propia cuenta.'
+            ], 403);
+        }
+
+        $request->validate([
+            'name' => 'sometimes|string|max:50|unique:users,name,' . $id,
+            'first_name' => 'sometimes|string|max:100',
+            'last_name'  => 'sometimes|string|max:100',
+            'email'    => 'sometimes|email|unique:users,email,' . $id,
+            'password' => 'sometimes|min:6'
+        ]);
+
         try {
-
-            $user = User::findOrFail($id);
-
-            // Verificar que sea admin
-            if ($user->role !== User::ROLE_ADMIN) {
-                return response()->json([
-                    'message' => 'Solo se puede modificar un administrador'
-                ], 400);
-            }
-            if (auth()->id() !== $user->id) {
-                return response()->json([
-                    'message' => 'Solo puedes modificar tu propia cuenta.'
-                ], 403);
-            }
-
-            // Validación
-            $request->validate([
-                'name' => 'sometimes|string|max:50|unique:users,name,' . $id,
-                'first_name' => 'sometimes|string|max:100',
-                'last_name'  => 'sometimes|string|max:100',
-                'email'    => 'sometimes|email|unique:users,email,' . $id,
-                'password' => 'sometimes|min:6'
-            ]);
-
             // Evitar que cambie rol o status
             $user->update($request->only([
                 'name',
@@ -61,7 +59,7 @@ class UserController extends Controller
     public function listRemitentes()
     {
         try {
-            $remitentes = User::where('role', User::ROLE_REMITENTE)->get();
+            $remitentes = User::where('role', User::ROLE_REMITENTE)->orderBy('created_at', 'desc')->get();
             return response()->json($remitentes);
         } catch (\Throwable $th) {
             return response()->json([
@@ -73,16 +71,16 @@ class UserController extends Controller
     // Crear remitente
     public function createRemitente(Request $request)
     {
-        try {
-            $request->validate([
-                'name' => 'required|string|max:50|unique:users,name,',
-                'first_name' => 'required|string|max:100',
-                'last_name'  => 'required|string|max:100',
-                'cellphone'  => 'required|string|max:15',
-                'email'      => 'required|email|unique:users',
-                'password'   => 'required|min:6'
-            ]);
+        $request->validate([
+            'name' => 'required|string|max:50|unique:users,name',
+            'first_name' => 'required|string|max:100',
+            'last_name'  => 'required|string|max:100',
+            'cellphone'  => 'required|string|max:15',
+            'email'      => 'required|email|unique:users',
+            'password'   => 'required|min:6'
+        ]);
 
+        try {
             $user = User::create([
                 'name'       => $request->name,
                 'first_name' => $request->first_name,
@@ -110,32 +108,31 @@ class UserController extends Controller
     // Modificar remitente
     public function updateRemitente(Request $request, $id)
     {
+        $user = User::findOrFail($id);
+
+        // Verificar que sea remitente
+        if ($user->role !== User::ROLE_REMITENTE) {
+            return response()->json([
+                'message' => 'Solo se pueden modificar remitentes'
+            ], 400);
+        }
+
+        if ($user->status === User::STATUS_FIRED) {
+            return response()->json([
+                'message' => 'No se puede modificar un remitente despedido. Debe activarse primero.'
+            ], 400);
+        }
+
+        $request->validate([
+            'name' => 'sometimes|string|max:50|unique:users,name,' . $id,
+            'first_name' => 'sometimes|string|max:100',
+            'last_name'  => 'sometimes|string|max:100',
+            'cellphone'  => 'sometimes|string|max:15',
+            'email'      => 'sometimes|email|unique:users,email,' . $id,
+            'password'   => 'sometimes|min:6'
+        ]);
+
         try {
-            $user = User::findOrFail($id);
-
-            // Verificar que sea remitente
-            if ($user->role !== User::ROLE_REMITENTE) {
-                return response()->json([
-                    'message' => 'Solo se pueden modificar remitentes'
-                ], 400);
-            }
-
-            if ($user->status === User::STATUS_FIRED) {
-                return response()->json([
-                    'message' => 'No se puede modificar un remitente despedido. Debe activarse primero.'
-                ], 400);
-            }
-
-            // Validación
-            $request->validate([
-                'name' => 'sometimes|string|max:50|unique:users,name,' . $id,
-                'first_name' => 'sometimes|string|max:100',
-                'last_name'  => 'sometimes|string|max:100',
-                'cellphone'  => 'sometimes|string|max:15',
-                'email'      => 'sometimes|email|unique:users,email,' . $id,
-                'password'   => 'sometimes|min:6'
-            ]);
-
             // Actualizar datos permitidos
             $user->update($request->only([
                 'name',
