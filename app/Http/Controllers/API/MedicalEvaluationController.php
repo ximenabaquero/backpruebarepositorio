@@ -274,10 +274,12 @@ class MedicalEvaluationController extends Controller
                 'canceledBy',
             ])
             ->where('patient_id', $patientId)
-            ->latest()
-            ->get();
+            ->get()
+            ->sortByDesc(function ($eval) {
+                return $eval->procedures->max('procedure_date');
+            })
+            ->values();
 
-        
         if ($evaluation->isEmpty()) {
             return response()->json([
                 'message' => 'Este paciente no tiene valoraciones médicas',

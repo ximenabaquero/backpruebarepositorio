@@ -33,7 +33,9 @@ class StatsController extends Controller
             ->sum('total_amount');
 
         $thisMonthPatients = MedicalEvaluation::where('status', 'CONFIRMADO')
-            ->whereBetween('created_at', [$startOfThisMonth, $endOfThisMonth])
+            ->whereHas('procedures', function ($q) use ($startOfThisMonth, $endOfThisMonth) {
+                $q->whereBetween('procedure_date', [$startOfThisMonth, $endOfThisMonth]);
+            })
             ->distinct('patient_id')
             ->count('patient_id');
 
@@ -41,10 +43,10 @@ class StatsController extends Controller
             ->whereBetween('procedure_date', [$startOfThisMonth, $endOfThisMonth])
             ->count();
 
-        $thisMonthProcedures = ProcedureItem::whereHas('procedure.medicalEvaluation', function ($q) {
-                $q->where('status', 'CONFIRMADO');
+        $thisMonthProcedures = ProcedureItem::whereHas('procedure', function ($q) use ($startOfThisMonth, $endOfThisMonth) {
+                $q->whereBetween('procedure_date', [$startOfThisMonth, $endOfThisMonth])
+                ->whereHas('medicalEvaluation', fn($q) => $q->where('status', 'CONFIRMADO'));
             })
-            ->whereBetween('created_at', [$startOfThisMonth, $endOfThisMonth])
             ->count();
 
         // Mes anterior
@@ -53,7 +55,9 @@ class StatsController extends Controller
             ->sum('total_amount');
 
         $lastMonthPatients = MedicalEvaluation::where('status', 'CONFIRMADO')
-            ->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])
+            ->whereHas('procedures', function ($q) use ($startOfLastMonth, $endOfLastMonth) {
+                $q->whereBetween('procedure_date', [$startOfLastMonth, $endOfLastMonth]);
+            })
             ->distinct('patient_id')
             ->count('patient_id');
 
@@ -61,10 +65,10 @@ class StatsController extends Controller
             ->whereBetween('procedure_date', [$startOfLastMonth, $endOfLastMonth])
             ->count();
 
-        $lastMonthProcedures = ProcedureItem::whereHas('procedure.medicalEvaluation', function ($q) {
-                $q->where('status', 'CONFIRMADO');
+        $lastMonthProcedures = ProcedureItem::whereHas('procedure', function ($q) use ($startOfLastMonth, $endOfLastMonth) {
+                $q->whereBetween('procedure_date', [$startOfLastMonth, $endOfLastMonth])
+                ->whereHas('medicalEvaluation', fn($q) => $q->where('status', 'CONFIRMADO'));
             })
-            ->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])
             ->count();
 
         // Variaciones
@@ -85,11 +89,15 @@ class StatsController extends Controller
             : null;
 
         return response()->json([
-            'total_patients' => Patient::count(),
+            'total_patients' => MedicalEvaluation::where('status', 'CONFIRMADO')
+                    ->distinct('patient_id')
+                    ->count('patient_id'),
 
             'total_sessions' => Procedure::conEvaluacionConfirmada()->count(),
 
-            'total_procedures' => ProcedureItem::count(),
+            'total_procedures' => ProcedureItem::whereHas('procedure.medicalEvaluation', 
+                fn($q) => $q->where('status', 'CONFIRMADO')
+            )->count(),
 
             'total_income' => Procedure::conEvaluacionConfirmada()->sum('total_amount'),
 
@@ -125,66 +133,264 @@ class StatsController extends Controller
         $endOfYear   = $now->copy()->endOfYear();
 
         $stats = DB::table('medical_evaluations')
-            ->leftJoin('procedures', 'medical_evaluations.id', '=', 'procedures.medical_evaluation_id')
-            ->select(
-                'medical_evaluations.referrer_name',
-                // Pacientes únicos del mes
-                DB::raw("
-                    COUNT(DISTINCT CASE
-                        WHEN medical_evaluations.status = 'CONFIRMADO'
-                        AND medical_evaluations.created_at 
-                            BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
-                        THEN medical_evaluations.patient_id
-                    END) as total_patients_month
-                "),
+        ->leftJoin('procedures', 'medical_evaluations.id', '=', 'procedures.medical_evaluation_id')
+        ->select(
+            'medical_evaluations.referrer_name',
 
-                // Registros confirmados del mes
-                DB::raw("
-                    SUM(CASE
-                        WHEN medical_evaluations.status = 'CONFIRMADO'
-                        AND medical_evaluations.created_at 
-                            BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
-                        THEN 1 ELSE 0
-                    END) as total_confirmed_month
-                "),
+            // Pacientes únicos del mes — usa procedure_date
+            DB::raw("
+                COUNT(DISTINCT CASE
+                    WHEN medical_evaluations.status = 'CONFIRMADO'
+                    AND procedures.procedure_date 
+                        BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
+                    THEN medical_evaluations.patient_id
+                END) as total_patients_month
+            "),
 
-                // Registros cancelados del mes
-                DB::raw("
-                    SUM(CASE
-                        WHEN medical_evaluations.status = 'CANCELADO'
-                        AND medical_evaluations.created_at 
-                            BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
-                        THEN 1 ELSE 0
-                    END) as total_canceled_month
-                "),
+            // Registros confirmados del mes — usa procedure_date
+            DB::raw("
+                SUM(CASE
+                    WHEN medical_evaluations.status = 'CONFIRMADO'
+                    AND procedures.procedure_date 
+                        BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
+                    THEN 1 ELSE 0
+                END) as total_confirmed_month
+            "),
 
-                // Ingresos confirmados del mes
-                DB::raw("
-                    SUM(CASE
-                        WHEN medical_evaluations.status = 'CONFIRMADO'
-                        AND procedures.procedure_date 
-                            BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
-                        THEN procedures.total_amount
-                        ELSE 0
-                    END) as confirmed_income_month
-                "),
-                // Ingresos confirmados del año actual
-                DB::raw("
-                    SUM(CASE
-                        WHEN medical_evaluations.status = 'CONFIRMADO'
-                        AND procedures.procedure_date 
-                            BETWEEN '{$startOfYear}' AND '{$endOfYear}'
-                        THEN procedures.total_amount
-                        ELSE 0
-                    END) as confirmed_income_year
-                ")
-            )
-            ->whereNotNull('medical_evaluations.referrer_name')
-            ->groupBy('medical_evaluations.referrer_name')
-            ->orderByDesc('confirmed_income_year')
-            ->get();
+            // Registros cancelados del mes — usa procedure_date
+            DB::raw("
+                SUM(CASE
+                    WHEN medical_evaluations.status = 'CANCELADO'
+                    AND procedures.procedure_date 
+                        BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
+                    THEN 1 ELSE 0
+                END) as total_canceled_month
+            "),
+
+            // Ingresos del mes
+            DB::raw("
+                SUM(CASE
+                    WHEN medical_evaluations.status = 'CONFIRMADO'
+                    AND procedures.procedure_date 
+                        BETWEEN '{$startOfMonth}' AND '{$endOfMonth}'
+                    THEN procedures.total_amount
+                    ELSE 0
+                END) as confirmed_income_month
+            "),
+
+            // Ingresos del año
+            DB::raw("
+                SUM(CASE
+                    WHEN medical_evaluations.status = 'CONFIRMADO'
+                    AND procedures.procedure_date 
+                        BETWEEN '{$startOfYear}' AND '{$endOfYear}'
+                    THEN procedures.total_amount
+                    ELSE 0
+                END) as confirmed_income_year
+            ")
+        )
+        ->whereNotNull('medical_evaluations.referrer_name')
+        ->groupBy('medical_evaluations.referrer_name')
+        ->orderByDesc('confirmed_income_year')
+        ->get();
 
         return response()->json($stats);
+    }
+
+    /**
+     * Top 5 procedimientos por CANTIDAD (Demanda) del mes actual
+     */
+    public function topByDemand()
+    {
+        $now = Carbon::now();
+
+        $data = ProcedureItem::whereHas('procedure', function ($q) use ($now) {
+                $q->whereMonth('procedure_date', $now->month)
+                ->whereYear('procedure_date', $now->year)
+                ->whereHas('medicalEvaluation', fn($q) => $q->where('status', 'CONFIRMADO'));
+            })
+            ->select('item_name', DB::raw('COUNT(*) as total_count'))
+            ->groupBy('item_name')
+            ->orderByDesc('total_count')
+            ->limit(5)
+            ->get();
+
+        return response()->json($data);
+    }
+
+    /**
+     * Top 5 procedimientos por INGRESOS (Valor) del mes actual
+     */
+    public function topByIncome()
+    {
+        $now = Carbon::now();
+
+        $data = ProcedureItem::whereHas('procedure', function ($q) use ($now) {
+                $q->whereMonth('procedure_date', $now->month)
+                ->whereYear('procedure_date', $now->year)
+                ->whereHas('medicalEvaluation', fn($q) => $q->where('status', 'CONFIRMADO'));
+            })
+            ->select('item_name', DB::raw('SUM(price) as total_revenue'))
+            ->groupBy('item_name')
+            ->orderByDesc('total_revenue')
+            ->limit(5)
+            ->get();
+
+        return response()->json($data);
+    }
+
+    /**
+     * Registros: CONFIRMADO - EN_ESPERA - CANCELADO
+     */
+    public function conversionRate()
+    {
+        $now = Carbon::now();
+
+        $counts = MedicalEvaluation::whereHas('procedures', function ($q) use ($now) {
+                $q->whereMonth('procedure_date', $now->month)
+                ->whereYear('procedure_date', $now->year);
+            })
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $confirmed = (int) ($counts['CONFIRMADO'] ?? 0);
+        $canceled  = (int) ($counts['CANCELADO']  ?? 0);
+        $pending   = (int) ($counts['EN_ESPERA']  ?? 0);
+        $total     = $confirmed + $canceled + $pending;
+        $rate      = ($confirmed + $canceled) > 0
+            ? round(($confirmed / ($confirmed + $canceled)) * 100, 2)
+            : 0;
+
+        return response()->json([
+            'total'     => $total,
+            'confirmed' => $confirmed,
+            'canceled'  => $canceled,
+            'pending'   => $pending,
+            'rate'      => $rate,
+        ]);
+    }
+
+    /**
+     * Comparar totales - 12 meses 
+     */
+    public function annualComparison()
+    {
+        $now = Carbon::now();
+        $year = $now->year;
+
+        $months = collect(range(1, 12))->map(function ($month) use ($year) {
+            $start = Carbon::create($year, $month, 1)->startOfMonth();
+            $end   = Carbon::create($year, $month, 1)->endOfMonth();
+
+            $income = Procedure::conEvaluacionConfirmada()
+                ->whereBetween('procedure_date', [$start, $end])
+                ->sum('total_amount');
+
+            $patients = MedicalEvaluation::where('status', 'CONFIRMADO')
+                ->whereHas('procedures', function ($q) use ($start, $end) {
+                    $q->whereBetween('procedure_date', [$start, $end]);
+                })
+                ->distinct('patient_id')
+                ->count('patient_id');
+
+            $sessions = Procedure::conEvaluacionConfirmada()
+                ->whereBetween('procedure_date', [$start, $end])
+                ->count();
+
+            $procedures = ProcedureItem::whereHas('procedure', function ($q) use ($start, $end) {
+                    $q->whereBetween('procedure_date', [$start, $end])
+                    ->whereHas('medicalEvaluation', fn($q) => $q->where('status', 'CONFIRMADO'));
+                })
+                ->count();
+
+            return [
+                'month'      => $month,
+                'month_name' => $start->locale('es')->monthName,
+                'income'     => (float) $income,
+                'patients'   => $patients,
+                'sessions'   => $sessions,
+                'procedures' => $procedures,
+            ];
+        });
+
+        return response()->json([
+            'year'   => $year,
+            'months' => $months,
+        ]);
+    }
+
+    /**
+     * Comparar mes actual vs mes anterior
+     */
+    public function monthComparison()
+    {
+        $now  = Carbon::now();
+        $days = $now->daysInMonth;
+
+        $days_data = collect(range(1, $days))->map(function ($day) use ($now) {
+            $date     = Carbon::create($now->year, $now->month, $day)->startOfDay();
+            $dateEnd  = $date->copy()->endOfDay();
+
+            $prevDate    = $date->copy()->subMonth()->startOfDay();
+            $prevDateEnd = $prevDate->copy()->endOfDay();
+
+            $calc = function ($start, $end) {
+                $income = Procedure::conEvaluacionConfirmada()
+                    ->whereBetween('procedure_date', [$start, $end])
+                    ->sum('total_amount');
+
+                $patients = MedicalEvaluation::where('status', 'CONFIRMADO')
+                    ->whereHas('procedures', fn($q) => $q->whereBetween('procedure_date', [$start, $end]))
+                    ->distinct('patient_id')
+                    ->count('patient_id');
+
+                $sessions = Procedure::conEvaluacionConfirmada()
+                    ->whereBetween('procedure_date', [$start, $end])
+                    ->count();
+
+                $procedures = ProcedureItem::whereHas('procedure', fn($q) =>
+                    $q->whereBetween('procedure_date', [$start, $end])
+                    ->whereHas('medicalEvaluation', fn($q) => $q->where('status', 'CONFIRMADO'))
+                )->count();
+
+                return [
+                    'income'     => (float) $income,
+                    'patients'   => (int) $patients,
+                    'sessions'   => (int) $sessions,
+                    'procedures' => (int) $procedures,
+                ];
+            };
+
+            return [
+                'day'      => $day,
+                'current'  => $calc($date, $dateEnd),
+                'previous' => $calc($prevDate, $prevDateEnd),
+            ];
+        });
+
+        return response()->json([
+            'current_month'  => $now->locale('es')->monthName,
+            'previous_month' => $now->copy()->subMonth()->locale('es')->monthName,
+            'days'           => $days_data,
+        ]);
+    }
+    /*------------------------------------------------------------------*/
+
+    /**
+     * Ingresos por tipo de procedimiento
+     */
+    public function incomeByProcedureType()
+    {
+        $data = ProcedureItem::select(
+                'item_name',
+                DB::raw('SUM(price) as total_income')
+            )
+            ->groupBy('item_name')
+            ->orderByDesc('total_income')
+            ->get();
+
+        return response()->json($data);
     }
 
     /**
@@ -223,93 +429,6 @@ class StatsController extends Controller
             ->get();
 
         return response()->json($data);
-    }
-
-    /**
-     * Top 5 procedimientos por CANTIDAD (Demanda) del mes actual
-     */
-    public function topByDemand()
-    {
-        $now = Carbon::now();
-
-        $data = ProcedureItem::whereHas('procedure.medicalEvaluation', function ($query) {
-                $query->confirmado();
-            })
-            ->whereMonth('created_at', $now->month)
-            ->whereYear('created_at', $now->year)
-            ->select(
-                'item_name',
-                DB::raw('COUNT(*) as total_count')
-            )
-            ->groupBy('item_name')
-            ->orderByDesc('total_count')
-            ->limit(5)
-            ->get();
-
-        return response()->json($data);
-    }
-
-    /**
-     * Top 5 procedimientos por INGRESOS (Valor) del mes actual
-     */
-    public function topByIncome()
-    {
-        $now = Carbon::now();
-
-        $data = ProcedureItem::whereHas('procedure.medicalEvaluation', function ($query) {
-                $query->confirmado();
-            })
-            ->whereMonth('created_at', $now->month)
-            ->whereYear('created_at', $now->year)
-            ->select(
-                'item_name',
-                DB::raw('SUM(price) as total_revenue')
-            )
-            ->groupBy('item_name')
-            ->orderByDesc('total_revenue')
-            ->limit(5)
-            ->get();
-
-        return response()->json($data);
-    }
-
-    
-    /**
-     * Ingresos por tipo de procedimiento
-     */
-    public function incomeByProcedureType()
-    {
-        $data = ProcedureItem::select(
-                'item_name',
-                DB::raw('SUM(price) as total_income')
-            )
-            ->groupBy('item_name')
-            ->orderByDesc('total_income')
-            ->get();
-
-        return response()->json($data);
-    }
-
-    /**
-     * Tasa de conversión: CONFIRMADO vs CANCELADO
-     */
-    public function conversionRate()
-    {
-        $counts = MedicalEvaluation::selectRaw('status, COUNT(*) as total')
-            ->groupBy('status')
-            ->pluck('total', 'status');
-
-        $confirmed = (int) ($counts['CONFIRMADO'] ?? 0);
-        $canceled  = (int) ($counts['CANCELADO']  ?? 0);
-        $total     = $confirmed + $canceled;
-        $rate      = $total > 0 ? round(($confirmed / $total) * 100, 2) : 0;
-
-        return response()->json([
-            'total'     => $total,
-            'confirmed' => $confirmed,
-            'canceled'  => $canceled,
-            'rate'      => $rate,
-        ]);
     }
 
     /**

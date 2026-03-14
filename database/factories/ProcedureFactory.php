@@ -14,10 +14,10 @@ class ProcedureFactory extends Factory
     {
         return [
             'medical_evaluation_id' => MedicalEvaluation::factory(),
-            'procedure_date' => $this->faker->date(),
-            'total_amount' => $this->faker->numberBetween(100, 1000),
-            'brand_slug' => config('app.brand_slug'), 
-            'notes' => $this->faker->sentence(),
+            'procedure_date'        => now()->toDateString(),
+            'total_amount'          => 0, 
+            'brand_slug'            => config('app.brand_slug'),
+            'notes'                 => $this->faker->sentence(),
         ];
     }
 }
