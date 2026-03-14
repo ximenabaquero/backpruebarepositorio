@@ -61,13 +61,16 @@ use Illuminate\Http\Request;
             Route::prefix('stats')->group(function () {
                 Route::get('/summary', [StatsController::class, 'summary']);
                 Route::get('/referrer-stats', [StatsController::class, 'referrerStats']);
-                Route::get('/income-monthly', [StatsController::class, 'incomeMonthly']);
-                Route::get('/income-weekly', [StatsController::class, 'incomeWeekly']);
                 Route::get('/procedures/top-demand', [StatsController::class, 'topByDemand']);
                 Route::get('/procedures/top-income', [StatsController::class, 'topByIncome']);
-                Route::get('/income-by-procedure', [StatsController::class, 'incomeByProcedureType']);
                 Route::get('/conversion-rate', [StatsController::class, 'conversionRate']);
-                Route::get('/patients-monthly', [StatsController::class, 'patientsMonthly']);
+                Route::get('/annual-comparison', [StatsController::class, 'annualComparison']);
+                Route::get('/month-comparison', [StatsController::class, 'monthComparison']);
+
+                Route::get('/income-by-procedure', [StatsController::class, 'incomeByProcedureType']);
+                Route::get('/patients-monthly', [StatsController::class, 'patientsMonthly']); 
+                Route::get('/income-monthly', [StatsController::class, 'incomeMonthly']);
+                Route::get('/income-weekly', [StatsController::class, 'incomeWeekly']);
             });
         });
 
