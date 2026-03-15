@@ -5,163 +5,149 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreProcedureRequest;
 use App\Http\Requests\UpdateProcedureRequest;
+use App\Http\Responses\ApiResponse;
 use App\Models\Procedure;
-use App\Models\MedicalEvaluation;
-use App\Models\User;
+use App\Services\ProcedureService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Throwable;
 
+/**
+ * ProcedureController
+ *
+ * Middlewares aplicados en api.php:
+ *   - auth:sanctum  → usuario autenticado
+ *   - active        → cuenta activa (EnsureUserIsActive)
+ */
 class ProcedureController extends Controller
 {
-    // LISTAR PROCEDIMIENTOS
-    public function index(Request $request)
+    public function __construct(
+        private readonly ProcedureService $service
+    ) {}
+
+    // ─────────────────────────────────────────────
+    // LECTURA
+    // ─────────────────────────────────────────────
+
+    /**
+     * Listado de procedimientos.
+     * REMITENTE ve solo los de sus propias evaluaciones.
+     * ADMIN ve todos.
+     */
+    public function index(Request $request): JsonResponse
     {
-        $user = auth()->user();
+        $user  = auth()->user();
         $query = Procedure::with([
-            'items',
-            'medicalEvaluation.patient',
+            'items:id,procedure_id,item_name,price',
+            'medicalEvaluation.patient:id,user_id,first_name,last_name,cedula',
         ]);
 
-        // REMITENTE solo ve procedimientos de sus propias evaluaciones
         if ($user->isRemitente()) {
-            $query->whereHas('medicalEvaluation.patient', function ($q) use ($user) {
-                $q->where('user_id', $user->id);
-            });
-        }
-
-        if ($request->filled('medical_evaluation_id')) {
-            $query->where(
-                'medical_evaluation_id',
-                (int) $request->query('medical_evaluation_id')
+            $query->whereHas('medicalEvaluation.patient', fn($q) =>
+                $q->where('user_id', $user->id)
             );
         }
 
-        return response()->json(
+        if ($request->filled('medical_evaluation_id')) {
+            $query->where('medical_evaluation_id', (int) $request->query('medical_evaluation_id'));
+        }
+
+        return ApiResponse::success(
             $query->orderByDesc('procedure_date')->get()
         );
     }
 
-    // VER PROCEDIMIENTO
-    public function show(Procedure $procedure)
+    /**
+     * Detalle de un procedimiento.
+     */
+    public function show(Procedure $procedure): JsonResponse
     {
-        $user = auth()->user();
-        $procedure->load([
-            'items',
-            'medicalEvaluation.patient',
-        ]);
+        try {
+            $user = auth()->user();
 
-        if ($user->isRemitente() && $procedure->medicalEvaluation->patient->user_id !== $user->id) {
-            return response()->json(['message' => 'No autorizado'], 403);
+            $procedure->load([
+                'items:id,procedure_id,item_name,price',
+                'medicalEvaluation.patient:id,user_id,first_name,last_name,cedula',
+            ]);
+
+            if ($user->isRemitente() && $procedure->medicalEvaluation->patient->user_id !== $user->id) {
+                return ApiResponse::forbidden();
+            }
+
+            return ApiResponse::success($procedure);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener el procedimiento', debug: $e->getMessage());
         }
-
-        return response()->json($procedure);
     }
 
-    // CREAR PROCEDIMIENTO
-    public function store(StoreProcedureRequest $request)
+    // ─────────────────────────────────────────────
+    // ESCRITURA
+    // ─────────────────────────────────────────────
+
+    /**
+     * Crear un procedimiento con sus items.
+     */
+    public function store(StoreProcedureRequest $request): JsonResponse
     {
         try {
             $data = $request->validated();
-
-            $medicalEvaluation = MedicalEvaluation::findOrFail(
-                (int) $data['medical_evaluation_id']
-            );
-
             $user = auth()->user();
-            if ($user->isRemitente() && $medicalEvaluation->patient->user_id !== $user->id) {
-                return response()->json(['message' => 'No autorizado'], 403);
-            }
 
-            $brandSlug = config('app.brand_slug');
+            // REMITENTE solo puede crear procedimientos en evaluaciones propias
+            if ($user->isRemitente()) {
+                $evalPatientUserId = \App\Models\MedicalEvaluation::findOrFail($data['medical_evaluation_id'])
+                    ->patient
+                    ->user_id;
 
-            $items = $data['items'];
-            $totalAmount = 0.0;
-
-            foreach ($items as $item) {
-                $totalAmount += (float) $item['price'];
-            }
-
-            $procedure = DB::transaction(function () use ($data, $items, $totalAmount, $brandSlug) {
-                $procedure = Procedure::create([
-                    'medical_evaluation_id' => (int) $data['medical_evaluation_id'],
-                    'brand_slug' => $brandSlug,
-                    'procedure_date' => $data['procedure_date'],
-                    'notes' => $data['notes'],
-                    'total_amount' => $totalAmount,
-                ]);
-
-                foreach ($items as $item) {
-                    $procedure->items()->create([
-                        'item_name' => $item['item_name'],
-                        'price' => (float) $item['price'],
-                    ]);
+                if ($evalPatientUserId !== $user->id) {
+                    return ApiResponse::forbidden();
                 }
+            }
 
-                return $procedure;
-            });
+            $procedure = $this->service->create($data);
 
             $procedure->load([
-                'items',
-                'medicalEvaluation.patient',
+                'items:id,procedure_id,item_name,price',
+                'medicalEvaluation.patient:id,user_id,first_name,last_name,cedula',
             ]);
 
-            return response()->json([
+            return ApiResponse::success([
                 'message' => 'Procedimiento creado correctamente',
-                'data' => $procedure,
+                'data'    => $procedure,
             ], 201);
-        } catch (\Throwable $th) {
-            return response()->json(['error' => $th->getMessage()], 500);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al crear el procedimiento', debug: $e->getMessage());
         }
     }
 
-    // ACTUALIZAR PROCEDIMIENTO
-    public function update(UpdateProcedureRequest $request, Procedure $procedure)
+    /**
+     * Actualizar un procedimiento y/o sus items.
+     * Si se envían items, reemplaza todos los existentes.
+     */
+    public function update(UpdateProcedureRequest $request, Procedure $procedure): JsonResponse
     {
-        $user = auth()->user();
-        $procedure->load('medicalEvaluation.patient');
+        try {
+            $user = auth()->user();
 
-        if ($user->isRemitente() && $procedure->medicalEvaluation->patient->user_id !== $user->id) {
-            return response()->json(['message' => 'No autorizado'], 403);
+            $procedure->load('medicalEvaluation.patient:id,user_id');
+
+            if ($user->isRemitente() && $procedure->medicalEvaluation->patient->user_id !== $user->id) {
+                return ApiResponse::forbidden();
+            }
+
+            $procedure = $this->service->update($procedure, $request->validated());
+
+            $procedure->load([
+                'items:id,procedure_id,item_name,price',
+                'medicalEvaluation.patient:id,user_id,first_name,last_name,cedula',
+            ]);
+
+            return ApiResponse::success([
+                'message' => 'Procedimiento actualizado correctamente',
+                'data'    => $procedure,
+            ]);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al actualizar el procedimiento', debug: $e->getMessage());
         }
-
-        $data = $request->validated();
-
-        DB::transaction(function () use ($data, $procedure) {
-
-            if (array_key_exists('procedure_date', $data)) {
-                $procedure->procedure_date = $data['procedure_date'];
-            }
-
-            if (array_key_exists('notes', $data)) {
-                $procedure->notes = $data['notes'];
-            }
-
-            if (array_key_exists('items', $data)) {
-                $procedure->items()->delete();
-
-                $totalAmount = 0.0;
-                foreach ($data['items'] as $item) {
-                    $totalAmount += (float) $item['price'];
-                    $procedure->items()->create([
-                        'item_name' => $item['item_name'],
-                        'price' => (float) $item['price'],
-                    ]);
-                }
-
-                $procedure->total_amount = $totalAmount;
-            }
-
-            $procedure->save();
-        });
-
-        $procedure->load([
-            'items',
-            'medicalEvaluation.patient',
-        ]);
-
-        return response()->json([
-            'message' => 'Procedimiento actualizado correctamente',
-            'data' => $procedure,
-        ]);
     }
 }
