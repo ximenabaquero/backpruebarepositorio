@@ -7,23 +7,22 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Run the migrations.
+     * Migración obsoleta.
+     *
+     * Originalmente intentaba eliminar procedure_id de medical_evaluations,
+     * pero esa columna nunca existió en esa tabla.
+     * La relación correcta es procedures.medical_evaluation_id (no al revés).
+     *
+     * Se deja vacía para preservar el historial de migraciones
+     * sin romper RefreshDatabase en los tests.
      */
     public function up(): void
     {
-        Schema::table('medical_evaluations', function (Blueprint $table) {
-            $table->dropForeign(['procedure_id']);
-            $table->dropColumn('procedure_id');
-        });
+        //
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('medical_evaluations', function (Blueprint $table) {
-            $table->foreignId('procedure_id')->constrained();
-        });
+        //
     }
 };

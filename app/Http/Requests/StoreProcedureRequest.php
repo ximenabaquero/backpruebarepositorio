@@ -22,7 +22,7 @@ class StoreProcedureRequest extends FormRequest
                 // Una evaluación puede tener múltiples procedimientos
                 // (el frontend itera procedures.map() — es una relación hasMany)
             ],
-            'notes'                 => ['nullable', 'string'],
+            'notes'                 => ['required', 'string'],
             'items'                 => ['required', 'array', 'min:1'],
             'items.*.item_name'     => ['required', 'string', 'max:100'],
             'items.*.price'         => ['required', 'numeric', 'min:0'],
@@ -34,6 +34,7 @@ class StoreProcedureRequest extends FormRequest
         return [
             'medical_evaluation_id.required' => 'La valoración médica es obligatoria.',
             'medical_evaluation_id.exists'   => 'La valoración médica no existe.',
+            'notes.required'                 => 'Las notas clínicas son obligatorias.',
             'items.required'                 => 'Debe agregar al menos un procedimiento.',
             'items.min'                      => 'Debe agregar al menos un procedimiento.',
             'items.*.item_name.required'     => 'El nombre del procedimiento es obligatorio.',

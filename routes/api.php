@@ -12,6 +12,7 @@ use App\Http\Controllers\API\MedicalEvaluationController;
 use App\Http\Controllers\API\StatsController;
 use App\Http\Controllers\API\UserController;
 use App\Http\Controllers\API\InventoryController;
+use App\Http\Controllers\API\ClinicalRecordController;
 use Illuminate\Http\Request;
 
 /*
@@ -35,7 +36,8 @@ Route::prefix('v1')->group(function () {
     // ======================
     // Auth
     // ======================
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:login');
 
     // ======================
     // Rutas protegidas — ADMIN
@@ -113,6 +115,12 @@ Route::prefix('v1')->group(function () {
 
             Route::get('/summary',           [InventoryController::class, 'summary']);
         });
+
+        // Flujo 1 — Pantalla "Registrar paciente" (paciente nuevo)
+        Route::post('/clinical-records', [ClinicalRecordController::class, 'store']);
+        
+        // Flujo 2 — Pantalla "Historial del paciente" → "Nuevo registro"
+        Route::post('/patients/{patient}/clinical-records', [ClinicalRecordController::class, 'storeForPatient']);
 
         // Pacientes
         Route::get('/patients',             [PatientController::class, 'index']);

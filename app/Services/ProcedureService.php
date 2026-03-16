@@ -20,7 +20,7 @@ class ProcedureService
                 'medical_evaluation_id' => $data['medical_evaluation_id'],
                 'brand_slug'            => config('app.brand_slug'),
                 'procedure_date'        => \Carbon\Carbon::today(),
-                'notes'                 => $data['notes'] ?? null,
+                'notes'                 => $data['notes'],
                 'total_amount'          => $totalAmount,
             ]);
 
