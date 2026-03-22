@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CreateRemitenteRequest;
+use App\Http\Requests\UpdateUserRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Throwable;
 
 class UserController extends Controller
@@ -18,8 +20,9 @@ class UserController extends Controller
     /**
      * Editar campos del admin autenticado.
      * Solo puede modificar su propia cuenta.
+     * Si se envía password debe cumplir los requisitos de UpdateUserRequest.
      */
-    public function updateAdmin(Request $request, int $id): JsonResponse
+    public function updateAdmin(UpdateUserRequest $request, int $id): JsonResponse
     {
         $user = User::findOrFail($id);
 
@@ -31,16 +34,14 @@ class UserController extends Controller
             return ApiResponse::forbidden('Solo puedes modificar tu propia cuenta.');
         }
 
-        $validated = $request->validate([
-            'name'       => 'sometimes|string|max:50|unique:users,name,' . $id,
-            'first_name' => 'sometimes|string|max:100',
-            'last_name'  => 'sometimes|string|max:100',
-            'email'      => 'sometimes|email|unique:users,email,' . $id,
-            'password'   => 'sometimes|min:6',
-        ]);
-
         try {
-            $user->update($validated);
+            $data = $request->validated();
+
+            if (isset($data['password'])) {
+                $data['password'] = Hash::make($data['password']);
+            }
+
+            $user->update($data);
 
             return ApiResponse::success([
                 'message' => 'Administrador actualizado correctamente',
@@ -73,18 +74,11 @@ class UserController extends Controller
 
     /**
      * Crear un nuevo remitente.
+     * Contraseña: mínimo 8, máximo 64, mayúscula, minúscula, número, símbolo.
+     * Requiere password_confirmation en el request.
      */
-    public function createRemitente(Request $request): JsonResponse
+    public function createRemitente(CreateRemitenteRequest $request): JsonResponse
     {
-        $request->validate([
-            'name'       => 'required|string|max:50|unique:users,name',
-            'first_name' => 'required|string|max:100',
-            'last_name'  => 'required|string|max:100',
-            'cellphone'  => 'required|string|max:15',
-            'email'      => 'required|email|unique:users,email',
-            'password'   => 'required|min:6',
-        ]);
-
         try {
             $user = User::create([
                 'name'       => $request->name,
@@ -94,7 +88,7 @@ class UserController extends Controller
                 'brand_name' => config('app.brand_name'),
                 'brand_slug' => config('app.brand_slug'),
                 'email'      => $request->email,
-                'password'   => $request->password,
+                'password'   => Hash::make($request->password),
                 'role'       => User::ROLE_REMITENTE,
                 'status'     => User::STATUS_ACTIVE,
             ]);
@@ -110,8 +104,9 @@ class UserController extends Controller
 
     /**
      * Actualizar datos de un remitente.
+     * Si se envía password debe cumplir los mismos requisitos que al crear.
      */
-    public function updateRemitente(Request $request, int $id): JsonResponse
+    public function updateRemitente(UpdateUserRequest $request, int $id): JsonResponse
     {
         $user = User::findOrFail($id);
 
@@ -126,17 +121,14 @@ class UserController extends Controller
             );
         }
 
-        $validated = $request->validate([
-            'name'       => 'sometimes|string|max:50|unique:users,name,' . $id,
-            'first_name' => 'sometimes|string|max:100',
-            'last_name'  => 'sometimes|string|max:100',
-            'cellphone'  => 'sometimes|string|max:15',
-            'email'      => 'sometimes|email|unique:users,email,' . $id,
-            'password'   => 'sometimes|min:6',
-        ]);
-
         try {
-            $user->update($validated);
+            $data = $request->validated();
+
+            if (isset($data['password'])) {
+                $data['password'] = Hash::make($data['password']);
+            }
+
+            $user->update($data);
 
             return ApiResponse::success([
                 'message' => 'Remitente actualizado correctamente',
@@ -176,8 +168,8 @@ class UserController extends Controller
     // ─────────────────────────────────────────────
 
     /**
-     * Cambia el status de un remitente.
-     * Punto único para activar / inactivar / despedir — elimina la triplicación.
+     * Punto único para activar / inactivar / despedir.
+     * Elimina la triplicación de lógica de cambio de estado.
      */
     private function changeRemitenteStatus(int $id, string $status, string $verb): JsonResponse
     {
@@ -196,7 +188,7 @@ class UserController extends Controller
                 'user'    => $user,
             ]);
         } catch (Throwable $e) {
-            return ApiResponse::error("Error al cambiar el estado del remitente", debug: $e->getMessage());
+            return ApiResponse::error('Error al cambiar el estado del remitente', debug: $e->getMessage());
         }
     }
 }

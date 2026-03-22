@@ -10,48 +10,63 @@ use Tests\TestCase;
 class MedicalEvaluationTest extends TestCase
 {
     // ─────────────────────────────────────────────
-    // Lectura
+    // Lectura — ahora vive en ClinicalRecordController
     // ─────────────────────────────────────────────
 
-    public function test_remitente_solo_ve_sus_propias_evaluaciones(): void
+    public function test_remitente_solo_ve_evaluaciones_de_su_paciente(): void
     {
-        $remitente = $this->actingAsRemitente();
+        $remitente     = $this->actingAsRemitente();
         $otroRemitente = User::factory()->remitente()->create();
 
-        $miPaciente     = Patient::factory()->forRemitente($remitente)->create();
-        $pacienteAjeno  = Patient::factory()->forRemitente($otroRemitente)->create();
+        // Mi paciente con una evaluación mía
+        $miPaciente = Patient::factory()->forRemitente($remitente)->create();
+        MedicalEvaluation::factory()->create([
+            'patient_id' => $miPaciente->id,
+            'user_id'    => $remitente->id,
+        ]);
 
-        MedicalEvaluation::factory()->create(['patient_id' => $miPaciente->id,    'user_id' => $remitente->id]);
-        MedicalEvaluation::factory()->create(['patient_id' => $pacienteAjeno->id, 'user_id' => $otroRemitente->id]);
+        // Paciente ajeno — no debo poder acceder
+        $pacienteAjeno = Patient::factory()->forRemitente($otroRemitente)->create();
+        MedicalEvaluation::factory()->create([
+            'patient_id' => $pacienteAjeno->id,
+            'user_id'    => $otroRemitente->id,
+        ]);
 
-        $response = $this->getJson("/api/v1/medical-evaluation/patient/{$miPaciente->id}");
+        // Vista 1 de mi paciente — devuelve sus evaluaciones
+        $response = $this->getJson("/api/v1/patients/{$miPaciente->id}/clinical-records");
 
         $response->assertOk();
-        $this->assertCount(1, $response->json('data'));
+        $this->assertCount(1, $response->json('data.evaluations'));
     }
 
-    public function test_remitente_no_puede_ver_evaluaciones_de_otro(): void
+    public function test_remitente_no_puede_ver_evaluaciones_de_paciente_ajeno(): void
     {
         $this->actingAsRemitente();
 
         $otroRemitente = User::factory()->remitente()->create();
-        $paciente = Patient::factory()->forRemitente($otroRemitente)->create();
+        $pacienteAjeno = Patient::factory()->forRemitente($otroRemitente)->create();
+
         MedicalEvaluation::factory()->create([
-            'patient_id' => $paciente->id,
+            'patient_id' => $pacienteAjeno->id,
             'user_id'    => $otroRemitente->id,
         ]);
 
-        $this->getJson("/api/v1/medical-evaluation/patient/{$paciente->id}")
+        // Intentar acceder al perfil de un paciente ajeno → 403
+        $this->getJson("/api/v1/patients/{$pacienteAjeno->id}/clinical-records")
             ->assertForbidden();
     }
 
-    public function test_devuelve_404_si_paciente_no_tiene_evaluaciones(): void
+    public function test_devuelve_lista_vacia_si_paciente_no_tiene_evaluaciones(): void
     {
         $remitente = $this->actingAsRemitente();
         $paciente  = Patient::factory()->forRemitente($remitente)->create();
 
-        $this->getJson("/api/v1/medical-evaluation/patient/{$paciente->id}")
-            ->assertNotFound();
+        // Vista 1 devuelve 200 con array vacío — no 404
+        // El 404 era del endpoint anterior que ya no existe
+        $response = $this->getJson("/api/v1/patients/{$paciente->id}/clinical-records");
+
+        $response->assertOk();
+        $this->assertCount(0, $response->json('data.evaluations'));
     }
 
     // ─────────────────────────────────────────────

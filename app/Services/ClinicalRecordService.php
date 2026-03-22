@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\MedicalEvaluation;
 use App\Models\Patient;
+use App\Models\Procedure;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ClinicalRecordService
@@ -14,12 +16,101 @@ class ClinicalRecordService
         private readonly ProcedureService $procedureService,
     ) {}
 
+    // ─────────────────────────────────────────────
+    // LECTURA
+    // ─────────────────────────────────────────────
+
+    /**
+     * Vista 1 — Perfil del paciente con tarjetas de evaluaciones.
+     *
+     * Devuelve los datos básicos del paciente y la lista de tarjetas.
+     * Cada tarjeta muestra: fecha del procedimiento, nombre del remitente, estado.
+     *
+     * Se cargan TODAS las evaluaciones del paciente — incluso las de
+     * otros remitentes — porque el paciente puede haber sido atendido
+     * por múltiples remitentes. El remitente que consulta ya fue
+     * verificado como dueño del paciente en el controller.
+     *
+     * @return array{patient: Patient, evaluations: Collection}
+     */
+    public function getPatientProfile(Patient $patient): array
+    {
+        $evaluations = MedicalEvaluation::query()
+            ->select([
+                'id',
+                'patient_id',
+                'user_id',
+                'status',
+                'referrer_name',
+            ])
+            // Fecha del procedimiento para la tarjeta — subquery eficiente
+            // evita cargar el objeto Procedure completo solo para la fecha
+            ->selectSub(
+                Procedure::select('procedure_date')
+                    ->whereColumn('medical_evaluation_id', 'medical_evaluations.id')
+                    ->latest('procedure_date')
+                    ->limit(1),
+                'procedure_date'
+            )
+            ->where('patient_id', $patient->id)
+            ->orderByDesc('procedure_date')
+            ->get();
+
+        return [
+            'patient'     => $patient->only([
+                'id',
+                'full_name',    // accessor del modelo
+                'document_type',
+                'cedula',
+                'cellphone',
+                'date_of_birth',
+                'age',          // accessor del modelo
+                'biological_sex',
+            ]),
+            'evaluations' => $evaluations,
+        ];
+    }
+
+    /**
+     * Vista 2 — Registro clínico completo.
+     *
+     * Devuelve la evaluación con todos sus datos clínicos,
+     * los datos completos del paciente (incluyendo edad calculada),
+     * procedimientos e items.
+     *
+     * El controller se encarga de ocultar precios si la evaluación
+     * es de otro remitente.
+     */
+    public function getFullRecord(MedicalEvaluation $evaluation): MedicalEvaluation
+    {
+        $evaluation->load([
+            // Datos completos del paciente — mismos campos que Vista 1
+            // más antecedentes médicos que en las tarjetas no se muestran
+            'patient:id,user_id,first_name,last_name,document_type,cedula,cellphone,date_of_birth,biological_sex',
+            'procedures:id,medical_evaluation_id,procedure_date,total_amount,notes',
+            'procedures.items:id,procedure_id,item_name,price',
+            'user:id,name,first_name,last_name,brand_name',
+            'confirmedBy:id,first_name,last_name',
+            'canceledBy:id,first_name,last_name',
+        ]);
+
+        // Appends calculados del modelo Patient que no viven en DB
+        // age es accessors — hay que forzarlos en la serialización
+        $evaluation->patient->append(['age']);
+
+        return $evaluation;
+    }
+
+    // ─────────────────────────────────────────────
+    // ESCRITURA
+    // ─────────────────────────────────────────────
+
     /**
      * Flujo 1 — Pantalla "Registrar paciente"
      *
      * Crea paciente + evaluación + procedimiento en una transacción atómica.
-     * Si el paciente ya existe por cédula, devuelve error controlado
-     * para que el frontend redirija al historial del paciente existente.
+     * Si el paciente ya existe por cédula, lanza RuntimeException con los
+     * datos del paciente para que el controller redirija al historial.
      *
      * @return array{patient: Patient, evaluation: MedicalEvaluation}
      * @throws \RuntimeException si el paciente ya existe
@@ -27,8 +118,6 @@ class ClinicalRecordService
     public function createWithPatient(array $data, User $user): array
     {
         return DB::transaction(function () use ($data, $user) {
-            // Si ya existe, lanzar excepción con el paciente para que
-            // el controller pueda devolver sus datos al frontend
             $existing = Patient::where('cedula', $data['patient']['cedula'])->first();
             if ($existing) {
                 throw new \RuntimeException(
@@ -57,7 +146,6 @@ class ClinicalRecordService
      * Flujo 2 — Pantalla "Historial del paciente" → "Nuevo registro"
      *
      * El paciente ya existe — solo crea evaluación + procedimiento.
-     * El patient_id viene de la URL, verificado por route model binding.
      *
      * @return array{evaluation: MedicalEvaluation}
      */
@@ -82,10 +170,6 @@ class ClinicalRecordService
     // Privado
     // ─────────────────────────────────────────────
 
-    /**
-     * Lógica compartida entre los dos flujos:
-     * crear evaluación médica + procedimiento para un patient_id dado.
-     */
     private function createEvaluationAndProcedure(
         int $patientId,
         array $evaluationData,

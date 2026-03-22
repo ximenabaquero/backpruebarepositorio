@@ -72,7 +72,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->expectsJson()) {
                 return response()->json([
                     'data'    => null,
-                    'error'   => 'No autenticado.',
+                    'error'   => 'Unauthenticated',
                     'message' => 'error',
                 ], 401);
             }

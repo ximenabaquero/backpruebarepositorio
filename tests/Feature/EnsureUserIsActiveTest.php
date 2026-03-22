@@ -55,11 +55,26 @@ class EnsureUserIsActiveTest extends TestCase
     {
         $this->actingAsRemitenteInactivo();
 
-        $this->postJson('/api/v1/medical-evaluations', [
-            'patient_id'         => 1,
-            'weight'             => 65,
-            'height'             => 1.65,
-            'medical_background' => 'Sin antecedentes',
+        // POST /clinical-records es la ruta activa — POST /medical-evaluations fue eliminada
+        $this->postJson('/api/v1/clinical-records', [
+            'patient' => [
+                'first_name'     => 'María',
+                'last_name'      => 'García',
+                'cedula'         => '1234567890',
+                'document_type'  => 'Cédula de Ciudadanía',
+                'cellphone'      => '3001234567',
+                'biological_sex' => 'Femenino',
+                'date_of_birth'  => '1990-01-01',
+            ],
+            'evaluation' => [
+                'weight'             => 65,
+                'height'             => 1.65,
+                'medical_background' => 'Sin antecedentes',
+            ],
+            'procedure' => [
+                'notes' => 'Test',
+                'items' => [['item_name' => 'Test', 'price' => 100]],
+            ],
         ])
         ->assertForbidden();
     }
@@ -84,6 +99,6 @@ class EnsureUserIsActiveTest extends TestCase
     {
         $this->getJson('/api/v1/patients')
             ->assertUnauthorized()
-            ->assertJsonPath('error', 'No autenticado.');
+            ->assertJsonPath('error', 'Unauthenticated');
     }
 }

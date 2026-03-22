@@ -76,12 +76,9 @@ class StatsService
     // SUMMARY
     // ─────────────────────────────────────────────
 
-    /**
-     * KPIs generales del sistema (solo admin).
-     */
     public function getSummary(): array
     {
-        $now           = Carbon::now();
+        $now            = Carbon::now();
         $startThisMonth = $now->copy()->startOfMonth();
         $endThisMonth   = $now->copy()->endOfMonth();
         $startLastMonth = $now->copy()->subMonth()->startOfMonth();
@@ -90,11 +87,10 @@ class StatsService
         $thisMonth = $this->metricsForRange($startThisMonth, $endThisMonth);
         $lastMonth = $this->metricsForRange($startLastMonth, $endLastMonth);
 
-        // Totales históricos acumulados
-        $totalPatients  = MedicalEvaluation::where('status', 'CONFIRMADO')->distinct('patient_id')->count('patient_id');
-        $totalSessions  = Procedure::conEvaluacionConfirmada()->count();
+        $totalPatients   = MedicalEvaluation::where('status', 'CONFIRMADO')->distinct('patient_id')->count('patient_id');
+        $totalSessions   = Procedure::conEvaluacionConfirmada()->count();
         $totalProcedures = ProcedureItem::whereHas('procedure.medicalEvaluation', fn($q) => $q->where('status', 'CONFIRMADO'))->count();
-        $totalIncome    = Procedure::conEvaluacionConfirmada()->sum('total_amount');
+        $totalIncome     = Procedure::conEvaluacionConfirmada()->sum('total_amount');
 
         return [
             'total_patients'   => $totalPatients,
@@ -102,17 +98,17 @@ class StatsService
             'total_procedures' => $totalProcedures,
             'total_income'     => (float) $totalIncome,
 
-            'this_month_income'    => $thisMonth['income'],
-            'last_month_income'    => $lastMonth['income'],
-            'income_variation'     => $this->variation($thisMonth['income'], $lastMonth['income']),
+            'this_month_income'     => $thisMonth['income'],
+            'last_month_income'     => $lastMonth['income'],
+            'income_variation'      => $this->variation($thisMonth['income'], $lastMonth['income']),
 
-            'this_month_patients'  => $thisMonth['patients'],
-            'last_month_patients'  => $lastMonth['patients'],
-            'patients_variation'   => $this->variation($thisMonth['patients'], $lastMonth['patients']),
+            'this_month_patients'   => $thisMonth['patients'],
+            'last_month_patients'   => $lastMonth['patients'],
+            'patients_variation'    => $this->variation($thisMonth['patients'], $lastMonth['patients']),
 
-            'this_month_sessions'  => $thisMonth['sessions'],
-            'last_month_sessions'  => $lastMonth['sessions'],
-            'sessions_variation'   => $this->variation($thisMonth['sessions'], $lastMonth['sessions']),
+            'this_month_sessions'   => $thisMonth['sessions'],
+            'last_month_sessions'   => $lastMonth['sessions'],
+            'sessions_variation'    => $this->variation($thisMonth['sessions'], $lastMonth['sessions']),
 
             'this_month_procedures' => $thisMonth['procedures'],
             'last_month_procedures' => $lastMonth['procedures'],
@@ -124,17 +120,13 @@ class StatsService
     // REFERRER STATS
     // ─────────────────────────────────────────────
 
-    /**
-     * Stats de todos los remitentes (admin).
-     * Usa bindings correctos — elimina interpolación de SQL.
-     */
     public function getAllReferrerStats(): \Illuminate\Support\Collection
     {
-        $now          = Carbon::now();
-        $startMonth   = $now->copy()->startOfMonth()->toDateTimeString();
-        $endMonth     = $now->copy()->endOfMonth()->toDateTimeString();
-        $startYear    = $now->copy()->startOfYear()->toDateTimeString();
-        $endYear      = $now->copy()->endOfYear()->toDateTimeString();
+        $now        = Carbon::now();
+        $startMonth = $now->copy()->startOfMonth()->toDateTimeString();
+        $endMonth   = $now->copy()->endOfMonth()->toDateTimeString();
+        $startYear  = $now->copy()->startOfYear()->toDateTimeString();
+        $endYear    = $now->copy()->endOfYear()->toDateTimeString();
 
         return $this->buildReferrerQuery($startMonth, $endMonth, $startYear, $endYear)
             ->whereNotNull('medical_evaluations.referrer_name')
@@ -143,16 +135,13 @@ class StatsService
             ->get();
     }
 
-    /**
-     * Stats de un remitente específico (uso propio).
-     */
     public function getReferrerStatsByName(string $referrerName): object
     {
-        $now          = Carbon::now();
-        $startMonth   = $now->copy()->startOfMonth()->toDateTimeString();
-        $endMonth     = $now->copy()->endOfMonth()->toDateTimeString();
-        $startYear    = $now->copy()->startOfYear()->toDateTimeString();
-        $endYear      = $now->copy()->endOfYear()->toDateTimeString();
+        $now        = Carbon::now();
+        $startMonth = $now->copy()->startOfMonth()->toDateTimeString();
+        $endMonth   = $now->copy()->endOfMonth()->toDateTimeString();
+        $startYear  = $now->copy()->startOfYear()->toDateTimeString();
+        $endYear    = $now->copy()->endOfYear()->toDateTimeString();
 
         return $this->buildReferrerQuery($startMonth, $endMonth, $startYear, $endYear)
             ->where('medical_evaluations.referrer_name', $referrerName)
@@ -160,10 +149,6 @@ class StatsService
             ->firstOrFail();
     }
 
-    /**
-     * Query base compartida para stats de remitentes.
-     * Usa bindings — sin interpolación directa de variables.
-     */
     private function buildReferrerQuery(
         string $startMonth,
         string $endMonth,
@@ -178,33 +163,29 @@ class StatsService
                     WHEN medical_evaluations.status = 'CONFIRMADO'
                     AND procedures.procedure_date BETWEEN ? AND ?
                     THEN medical_evaluations.patient_id END) as total_patients_month"),
-
                 DB::raw("SUM(CASE
                     WHEN medical_evaluations.status = 'CONFIRMADO'
                     AND procedures.procedure_date BETWEEN ? AND ?
                     THEN 1 ELSE 0 END) as total_confirmed_month"),
-
                 DB::raw("SUM(CASE
                     WHEN medical_evaluations.status = 'CANCELADO'
                     AND procedures.procedure_date BETWEEN ? AND ?
                     THEN 1 ELSE 0 END) as total_canceled_month"),
-
                 DB::raw("SUM(CASE
                     WHEN medical_evaluations.status = 'CONFIRMADO'
                     AND procedures.procedure_date BETWEEN ? AND ?
                     THEN procedures.total_amount ELSE 0 END) as confirmed_income_month"),
-
                 DB::raw("SUM(CASE
                     WHEN medical_evaluations.status = 'CONFIRMADO'
                     AND procedures.procedure_date BETWEEN ? AND ?
                     THEN procedures.total_amount ELSE 0 END) as confirmed_income_year")
             )
             ->addBinding([
-                $startMonth, $endMonth, // patients month
-                $startMonth, $endMonth, // confirmed month
-                $startMonth, $endMonth, // canceled month
-                $startMonth, $endMonth, // income month
-                $startYear,  $endYear,  // income year
+                $startMonth, $endMonth,
+                $startMonth, $endMonth,
+                $startMonth, $endMonth,
+                $startMonth, $endMonth,
+                $startYear,  $endYear,
             ], 'select');
     }
 
@@ -212,9 +193,6 @@ class StatsService
     // TOP PROCEDURES
     // ─────────────────────────────────────────────
 
-    /**
-     * Top 5 por cantidad (demanda) — mes actual.
-     */
     public function getTopByDemand(): \Illuminate\Support\Collection
     {
         $now = Carbon::now();
@@ -231,9 +209,6 @@ class StatsService
         ->get();
     }
 
-    /**
-     * Top 5 por ingresos (valor) — mes actual.
-     */
     public function getTopByIncome(): \Illuminate\Support\Collection
     {
         $now = Carbon::now();
@@ -254,9 +229,6 @@ class StatsService
     // CONVERSION RATE
     // ─────────────────────────────────────────────
 
-    /**
-     * Distribución de estados del mes actual.
-     */
     public function getConversionRate(): array
     {
         $now = Carbon::now();
@@ -288,14 +260,6 @@ class StatsService
     // ANNUAL COMPARISON — con caché
     // ─────────────────────────────────────────────
 
-    /**
-     * Comparativa de los 12 meses del año actual.
-     *
-     * Los meses ya cerrados se cachean 6 horas — son inmutables.
-     * El mes en curso nunca se cachea.
-     *
-     * @param  string|null  $referrerName  Filtra por remitente si se pasa
-     */
     public function getAnnualComparison(?string $referrerName = null): array
     {
         $now  = Carbon::now();
@@ -305,7 +269,6 @@ class StatsService
             $start = Carbon::create($year, $month)->startOfMonth();
             $end   = Carbon::create($year, $month)->endOfMonth();
 
-            // Los meses pasados son inmutables → cachéalos
             $isCurrentMonth = $month === $now->month;
             $cacheKey = "annual_stats:{$year}:{$month}" . ($referrerName ? ":{$referrerName}" : '');
 
@@ -329,7 +292,7 @@ class StatsService
     }
 
     // ─────────────────────────────────────────────
-    // MONTH COMPARISON — Fix N+1 crítico
+    // MONTH COMPARISON — Fix N+1 + Fix only_full_group_by
     // ─────────────────────────────────────────────
 
     /**
@@ -337,8 +300,6 @@ class StatsService
      *
      * ANTES: ~480 queries (30 días × 8 queries/día).
      * AHORA: 8 queries totales — se agrupa todo en DB y se mapea en PHP.
-     *
-     * @param  string|null  $referrerName  Filtra por remitente si se pasa
      */
     public function getMonthComparison(?string $referrerName = null): array
     {
@@ -370,35 +331,48 @@ class StatsService
      * Agrega income, patients, sessions y procedures agrupados por día.
      * Son 4 queries por período — no una por día.
      *
+     * FIX 1 (MySQL only_full_group_by): Usa ->select() en vez de ->selectRaw()
+     * para REEMPLAZAR el select list completo. Con ->selectRaw() Laravel agrega
+     * al select existente dejando `procedures.*`, que MySQL en modo estricto rechaza
+     * al agrupar solo por DAY().
+     *
+     * FIX 2 (SQLite): DAY() es sintaxis MySQL exclusiva. Se usa strftime('%d', ...)
+     * en SQLite y DAY() en MySQL, detectando el driver en runtime.
+     * Esto permite que los tests corran en SQLite sin cambios.
+     *
      * @return array<string, \Illuminate\Support\Collection>
      */
     private function aggregateMetricsByDay(Carbon $start, Carbon $end, ?string $referrerName): array
     {
-        // Income por día
+        $driver = DB::getDriverName();
+
+        // strftime devuelve string con cero a la izquierda en SQLite ('01', '02'...)
+        // CAST a INTEGER para que pluck() devuelva claves numéricas en ambos motores
+        $dayExpr = $driver === 'sqlite'
+            ? "CAST(strftime('%d', procedure_date) AS INTEGER)"
+            : 'DAY(procedure_date)';
+
+        // select() reemplaza el select list completo — no acumula procedures.*
         $income = Procedure::conEvaluacionConfirmada($referrerName)
             ->whereBetween('procedure_date', [$start, $end])
-            ->selectRaw('DAY(procedure_date) as day, SUM(total_amount) as value')
-            ->groupByRaw('DAY(procedure_date)')
+            ->select(DB::raw("{$dayExpr} as day, SUM(total_amount) as value"))
+            ->groupBy(DB::raw($dayExpr))
             ->pluck('value', 'day');
 
-        // Sessions por día
         $sessions = Procedure::conEvaluacionConfirmada($referrerName)
             ->whereBetween('procedure_date', [$start, $end])
-            ->selectRaw('DAY(procedure_date) as day, COUNT(*) as value')
-            ->groupByRaw('DAY(procedure_date)')
+            ->select(DB::raw("{$dayExpr} as day, COUNT(*) as value"))
+            ->groupBy(DB::raw($dayExpr))
             ->pluck('value', 'day');
 
-        // Patients únicos por día
         $patients = MedicalEvaluation::where('status', 'CONFIRMADO')
             ->when($referrerName, fn($q) => $q->where('referrer_name', $referrerName))
-            ->whereHas('procedures', fn($q) => $q->whereBetween('procedure_date', [$start, $end]))
             ->join('procedures', 'medical_evaluations.id', '=', 'procedures.medical_evaluation_id')
             ->whereBetween('procedures.procedure_date', [$start, $end])
-            ->selectRaw('DAY(procedures.procedure_date) as day, COUNT(DISTINCT medical_evaluations.patient_id) as value')
-            ->groupByRaw('DAY(procedures.procedure_date)')
+            ->select(DB::raw("{$dayExpr} as day, COUNT(DISTINCT medical_evaluations.patient_id) as value"))
+            ->groupBy(DB::raw($dayExpr))
             ->pluck('value', 'day');
 
-        // Procedures (items) por día
         $procedures = ProcedureItem::whereHas('procedure', function ($q) use ($start, $end, $referrerName) {
             $q->whereBetween('procedure_date', [$start, $end])
               ->whereHas('medicalEvaluation', function ($q) use ($referrerName) {
@@ -409,8 +383,8 @@ class StatsService
               });
         })
         ->join('procedures', 'procedure_items.procedure_id', '=', 'procedures.id')
-        ->selectRaw('DAY(procedures.procedure_date) as day, COUNT(*) as value')
-        ->groupByRaw('DAY(procedures.procedure_date)')
+        ->select(DB::raw("{$dayExpr} as day, COUNT(*) as value"))
+        ->groupBy(DB::raw($dayExpr))
         ->pluck('value', 'day');
 
         return compact('income', 'sessions', 'patients', 'procedures');
@@ -432,13 +406,9 @@ class StatsService
     }
 
     // ─────────────────────────────────────────────
-    // REFERRER SELF-SUMMARY (mínimo privilegio)
+    // REFERRER SELF-SUMMARY
     // ─────────────────────────────────────────────
 
-    /**
-     * KPIs del mes para un remitente — solo sus propios datos.
-     * No expone comparativas globales ni datos de otros remitentes.
-     */
     public function getReferrerSummary(string $referrerName): array
     {
         $now            = Carbon::now();
@@ -454,17 +424,12 @@ class StatsService
         $yearToDate = $this->metricsForRange($startYear, $endYear, $referrerName);
 
         return [
-            // Mes actual
             'this_month_income'    => $thisMonth['income'],
             'this_month_patients'  => $thisMonth['patients'],
             'this_month_sessions'  => $thisMonth['sessions'],
-
-            // Variaciones vs mes anterior
             'income_variation'     => $this->variation($thisMonth['income'],   $lastMonth['income']),
             'patients_variation'   => $this->variation($thisMonth['patients'], $lastMonth['patients']),
             'sessions_variation'   => $this->variation($thisMonth['sessions'], $lastMonth['sessions']),
-
-            // Acumulado año
             'year_income'          => $yearToDate['income'],
             'year_patients'        => $yearToDate['patients'],
             'year_sessions'        => $yearToDate['sessions'],
