@@ -35,7 +35,7 @@ class StorePatientRequest extends FormRequest
             'last_name' => ['required', 'string', 'max:100'],
             'cellphone' => ['required', 'string', 'max:25'],
             'biological_sex' => ['required', 'string', 'in:Femenino,Masculino,Otro'],
-            'cedula' => ['required', 'string', 'max:15', 'unique:patients,cedula'],
+            'cedula' => ['required', 'string', 'max:15'],
             'document_type' => ['required', 'string', 'in:Cédula de Ciudadanía,Cédula de Extranjería,Pasaporte,Tarjeta de Identidad'],
             'date_of_birth' => ['required', 'date', 'before:today'],
         ];
@@ -50,7 +50,6 @@ class StorePatientRequest extends FormRequest
             'biological_sex.required' => 'El sexo biológico es obligatorio.',
             'biological_sex.in'     => 'El sexo biológico debe ser Femenino, Masculino u Otro.',
             'cedula.required'       => 'La cédula es obligatoria.',
-            'cedula.unique'         => 'Ya existe un paciente registrado con esa cédula.',
             'date_of_birth.required' => 'La fecha de nacimiento es obligatoria.',
             'date_of_birth.before'  => 'La fecha de nacimiento debe ser anterior a hoy.',
         ];

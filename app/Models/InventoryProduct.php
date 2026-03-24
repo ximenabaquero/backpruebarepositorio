@@ -3,8 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InventoryProduct extends Model
 {
@@ -18,28 +16,23 @@ class InventoryProduct extends Model
     ];
 
     protected $casts = [
+        'active'     => 'boolean',
         'unit_price' => 'float',
         'stock'      => 'integer',
-        'active'     => 'boolean',
     ];
 
-    public function category(): BelongsTo
+    public function category()
     {
-        return $this->belongsTo(InventoryCategory::class);
+        return $this->belongsTo(InventoryCategory::class, 'category_id');
     }
 
-    public function purchases(): HasMany
-    {
-        return $this->hasMany(InventoryPurchase::class, 'product_id');
-    }
-
-    public function usages(): HasMany
+    public function usages()
     {
         return $this->hasMany(InventoryUsage::class, 'product_id');
     }
 
-    public function isLowStock(): bool
+    public function purchases()
     {
-        return $this->stock < 5;
+        return $this->hasMany(InventoryPurchase::class, 'product_id');
     }
 }

@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InventoryUsage extends Model
 {
@@ -16,16 +15,16 @@ class InventoryUsage extends Model
     ];
 
     protected $casts = [
-        'quantity'   => 'integer',
-        'usage_date' => 'date',
+        'usage_date' => 'date:Y-m-d',
     ];
 
-    public function product(): BelongsTo
+    public function product()
     {
-        return $this->belongsTo(InventoryProduct::class);
+        return $this->belongsTo(InventoryProduct::class, 'product_id')
+                    ->with('category');
     }
 
-    public function user(): BelongsTo
+    public function user()
     {
         return $this->belongsTo(User::class);
     }

@@ -5,163 +5,184 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMedicalEvaluationRequest;
 use App\Http\Requests\UpdateMedicalEvaluationRequest;
+use App\Http\Responses\ApiResponse;
 use App\Models\MedicalEvaluation;
-use App\Models\User;
 use App\Models\Patient;
+use App\Services\MedicalEvaluationService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Throwable;
 
+/**
+ * MedicalEvaluationController
+ *
+ * Middlewares aplicados en api.php:
+ *   - auth:sanctum  → usuario autenticado
+ *   - active        → cuenta activa (EnsureUserIsActive)
+ */
 class MedicalEvaluationController extends Controller
-{  
-    
-   // CREAR VALORACIÓN MÉDICA
-    public function store(StoreMedicalEvaluationRequest $request)
+{
+    public function __construct(
+        private readonly MedicalEvaluationService $service
+    ) {}
+
+    // ─────────────────────────────────────────────
+    // LECTURA
+    // ─────────────────────────────────────────────
+
+    /**
+     * Listado de valoraciones de un paciente.
+     *
+     * Solo manda lo que PatientRecordsList consume:
+     *   id, status, referrer_name
+     *   procedures[0].procedure_date
+     *
+     * Campos pesados (medical_background, patient_signature,
+     * datos clínicos, auditoría) se reservan para showById.
+     */
+    public function showByPatient(int $patientId): JsonResponse
     {
         try {
-            $data = $request->validated();
-
             $user = auth()->user();
-            if (!$user) {
-                return response()->json(['message' => 'No autenticado'], 401);
+
+            if ($user->isRemitente()) {
+                $patient = Patient::findOrFail($patientId);
+                if ($patient->user_id !== $user->id) {
+                    return ApiResponse::forbidden();
+                }
             }
 
-            if ($user->status !== User::STATUS_ACTIVE) {
-                return response()->json([
-                    'message' => 'Tu cuenta no está activa. No puedes registrar pacientes.'
-                ], 403);
+            $evaluations = MedicalEvaluation::with([
+                // Solo procedure_date — el listado muestra la fecha del primer procedimiento
+                'procedures:id,medical_evaluation_id,procedure_date',
+            ])
+            ->select([
+                'id',
+                'patient_id',   // requerido para que el eager load funcione correctamente
+                'status',
+                'referrer_name',
+            ])
+            ->where('patient_id', $patientId)
+            ->orderByDesc(
+                \App\Models\Procedure::select('procedure_date')
+                    ->whereColumn('medical_evaluation_id', 'medical_evaluations.id')
+                    ->latest('procedure_date')
+                    ->limit(1)
+            )
+            ->get();
+
+            if ($evaluations->isEmpty()) {
+                return ApiResponse::error('Este paciente no tiene valoraciones médicas', 404);
             }
 
-            $weight = $data['weight'];
-            $height = $data['height'];
-
-            // Calcular BMI (2 decimales)
-            $bmi = round($weight / ($height * $height), 2);
-
-            // Calcular estado BMI
-            $bmiStatus = $this->getBmiStatus($bmi);
-
-            // Obtener edad del paciente en el momento de la evaluación
-            $patient = Patient::findOrFail($data['patient_id']);
-            $patientAge = $patient->age; // usa getAgeAttribute()
-
-            $medicalEvaluation = DB::transaction(function () use (
-                $data, $bmi, $bmiStatus, $patientAge, $user
-            ) {
-                return MedicalEvaluation::create([
-                    'user_id'                   => $user->id,
-                    'patient_id'                => $data['patient_id'],
-                    'medical_background'        => $data['medical_background'],
-                    'weight'                    => $data['weight'],
-                    'height'                    => $data['height'],
-                    'bmi'                       => $bmi,
-                    'bmi_status'                => $bmiStatus,
-                    'referrer_name'             => $user->name,
-                    'patient_age_at_evaluation' => $patientAge,
-                    'status'                    => MedicalEvaluation::STATUS_EN_ESPERA,
-                ]);
-            });
-
-            return response()->json([
-                'message' => 'Valoración médica creada correctamente',
-                'data'    => $medicalEvaluation->load(['patient', 'user']),
-            ], 201);
-
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error'   => 'Error interno del servidor',
-                'details' => $th->getMessage(),
-            ], 500);
+            return ApiResponse::success($evaluations);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener las valoraciones', debug: $e->getMessage());
         }
     }
 
-   // ACTUALIZAR VALORACIÓN
-    public function update(UpdateMedicalEvaluationRequest $request, MedicalEvaluation $medicalEvaluation)
+    /**
+     * Detalle completo de una valoración.
+     *
+     * Carga TODO lo que PatientRecordDetail consume:
+     *   - Datos clínicos completos (weight, height, bmi, medical_background)
+     *   - Procedimientos con items y precios
+     *   - patient_signature y auditoría de confirmación/cancelación
+     *   - patient_age_at_evaluation (snapshot de edad en la valoración)
+     *   - brand_name del remitente para el encabezado del PDF
+     */
+    public function showById(int $id): JsonResponse
     {
         try {
             $user = auth()->user();
-            if (!$user) {
-                return response()->json(['message' => 'No autenticado'], 401);
+
+            $evaluation = MedicalEvaluation::with([
+                // Todos los campos del paciente para la ficha clínica y factura
+                'patient:id,user_id,first_name,last_name,cedula,cellphone,date_of_birth,biological_sex',
+                // Procedimientos completos con items
+                'procedures:id,medical_evaluation_id,procedure_date,total_amount,notes',
+                'procedures.items:id,procedure_id,item_name,price',
+                // brand_name lo usa el header del PDF
+                'user:id,name,first_name,last_name,brand_name',
+                // Auditoría visible en la firma
+                'confirmedBy:id,first_name,last_name',
+                'canceledBy:id,first_name,last_name',
+            ])
+            ->findOrFail($id);
+
+            if ($user->isRemitente() && $evaluation->patient->user_id !== $user->id) {
+                return ApiResponse::forbidden();
             }
 
-            if ($user->status !== User::STATUS_ACTIVE) {
-                return response()->json([
-                    'message' => 'Tu cuenta no está activa. No puedes actualizar valoraciones.'
-                ], 403);
-            }
+            return ApiResponse::success($evaluation);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener la valoración', debug: $e->getMessage());
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // ESCRITURA
+    // ─────────────────────────────────────────────
+
+    public function store(StoreMedicalEvaluationRequest $request): JsonResponse
+    {
+        try {
+            $evaluation = $this->service->create(
+                $request->validated(),
+                auth()->user()
+            );
+
+            return ApiResponse::success([
+                'message' => 'Valoración médica creada correctamente',
+                'data'    => $evaluation->load(['patient', 'user']),
+            ], 201);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al crear la valoración', debug: $e->getMessage());
+        }
+    }
+
+    public function update(
+        UpdateMedicalEvaluationRequest $request,
+        MedicalEvaluation $medicalEvaluation
+    ): JsonResponse {
+        try {
+            $user = auth()->user();
 
             if ($user->isRemitente() && $medicalEvaluation->patient->user_id !== $user->id) {
-                return response()->json(['message' => 'No autorizado'], 403);
+                return ApiResponse::forbidden();
             }
-
-            $data = $request->validated();
 
             if ($medicalEvaluation->isConfirmado()) {
-                return response()->json([
-                    'message' => 'No se pueden editar datos clínicos de una valoración confirmada. Debe cancelarla primero.'
-                ], 403);
+                return ApiResponse::error(
+                    'No se pueden editar datos clínicos de una valoración confirmada. Debe cancelarla primero.',
+                    403
+                );
             }
 
-            DB::transaction(function () use ($data, $medicalEvaluation) {
-                if (isset($data['weight'])) {
-                    $medicalEvaluation->weight = $data['weight'];
-                }
+            $evaluation = $this->service->update(
+                $medicalEvaluation,
+                $request->validated()
+            );
 
-                if (isset($data['height'])) {
-                    $medicalEvaluation->height = $data['height'];
-                }
-
-                if (isset($data['medical_background'])) {
-                    $medicalEvaluation->medical_background = $data['medical_background'];
-                }
-
-                // Recalcular BMI si cambia peso o altura
-                if (isset($data['weight']) || isset($data['height'])) {
-                    $weight = $medicalEvaluation->weight;
-                    $height = $medicalEvaluation->height;
-
-                    $bmi = round($weight / ($height * $height), 2);
-                    $medicalEvaluation->bmi = $bmi;
-                    $medicalEvaluation->bmi_status = $this->getBmiStatus($bmi);
-                }
-
-                // Recalcular edad del paciente en la evaluación
-                $patient = $medicalEvaluation->patient;
-                $medicalEvaluation->patient_age_at_evaluation = $patient->age;
-
-                $medicalEvaluation->save();
-            });
-
-            return response()->json([
+            return ApiResponse::success([
                 'message' => 'Valoración médica actualizada correctamente',
-                'data'    => $medicalEvaluation->load(['patient', 'user', 'procedures']),
+                'data'    => $evaluation->load(['patient', 'user', 'procedures.items']),
             ]);
-
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error'   => 'Error interno del servidor',
-                'details' => $th->getMessage(),
-            ], 500);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al actualizar la valoración', debug: $e->getMessage());
         }
     }
 
-    // CONFIRMAR VALORACIÓN
-    public function confirmar(Request $request, MedicalEvaluation $medicalEvaluation)
+    // ─────────────────────────────────────────────
+    // CAMBIOS DE ESTADO
+    // ─────────────────────────────────────────────
+
+    public function confirmar(Request $request, MedicalEvaluation $medicalEvaluation): JsonResponse
     {
         $user = auth()->user();
-        if (!$user) {
-            return response()->json([
-                'message' => 'No autenticado'
-            ], 401);
-        }
-
-        if ($user->status !== User::STATUS_ACTIVE) {
-            return response()->json([
-                'message' => 'Tu cuenta no está activa. No puedes confirmar valoraciones.'
-            ], 403);
-        }
 
         if ($user->isRemitente() && $medicalEvaluation->patient->user_id !== $user->id) {
-            return response()->json(['message' => 'No autorizado'], 403);
+            return ApiResponse::forbidden();
         }
 
         $request->validate([
@@ -171,185 +192,51 @@ class MedicalEvaluationController extends Controller
 
         try {
             if ($medicalEvaluation->isConfirmado()) {
-                return response()->json([
+                return ApiResponse::success([
                     'message' => 'La valoración ya está confirmada',
-                    'data' => $medicalEvaluation->load(['patient', 'user', 'confirmedBy']),
+                    'data'    => $medicalEvaluation->load(['patient', 'user', 'confirmedBy']),
                 ]);
             }
 
-            DB::transaction(function () use ($medicalEvaluation, $request) {
-                $medicalEvaluation->status               = MedicalEvaluation::STATUS_CONFIRMADO;
-                $medicalEvaluation->confirmed_at         = now();
-                $medicalEvaluation->confirmed_by_user_id = auth()->id();
-                $medicalEvaluation->patient_signature    = $request->patient_signature;
-                $medicalEvaluation->terms_accepted_at    = now();
-                $medicalEvaluation->canceled_at          = null;
-                $medicalEvaluation->canceled_by_user_id  = null;
-                $medicalEvaluation->save();
-            });
+            $evaluation = $this->service->confirmar(
+                $medicalEvaluation,
+                $request->patient_signature,
+                auth()->id()
+            );
 
-            return response()->json([
+            return ApiResponse::success([
                 'message' => 'Valoración confirmada correctamente',
-                'data' => $medicalEvaluation->load(['patient', 'user', 'confirmedBy']),
+                'data'    => $evaluation->load(['patient', 'user', 'confirmedBy']),
             ]);
-        } catch (\Throwable $th) {
-            return response()->json(['error' => $th->getMessage()], 500);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al confirmar la valoración', debug: $e->getMessage());
         }
     }
 
-    // CANCELAR VALORACIÓN
-    public function cancelar(MedicalEvaluation $medicalEvaluation)
+    public function cancelar(MedicalEvaluation $medicalEvaluation): JsonResponse
     {
         $user = auth()->user();
-        if (!$user) {
-            return response()->json([
-                'message' => 'No autenticado'
-            ], 401);
-        }
-
-        if ($user->status !== User::STATUS_ACTIVE) {
-            return response()->json([
-                'message' => 'Tu cuenta no está activa. No puedes cancelar valoraciones.'
-            ], 403);
-        }
 
         if ($user->isRemitente() && $medicalEvaluation->patient->user_id !== $user->id) {
-            return response()->json(['message' => 'No autorizado'], 403);
+            return ApiResponse::forbidden();
         }
 
         try {
             if ($medicalEvaluation->isCancelado()) {
-                return response()->json([
+                return ApiResponse::success([
                     'message' => 'La valoración ya está cancelada',
-                    'data' => $medicalEvaluation->load(['patient', 'user', 'canceledBy']),
+                    'data'    => $medicalEvaluation->load(['patient', 'user', 'canceledBy']),
                 ]);
             }
 
-            DB::transaction(function () use ($medicalEvaluation) {
-                $medicalEvaluation->status = MedicalEvaluation::STATUS_CANCELADO;
-                $medicalEvaluation->canceled_at = now();
-                $medicalEvaluation->canceled_by_user_id = auth()->id();
-                $medicalEvaluation->confirmed_at = null;
-                $medicalEvaluation->confirmed_by_user_id = null;
-                $medicalEvaluation->save();
-            });
+            $evaluation = $this->service->cancelar($medicalEvaluation, auth()->id());
 
-            return response()->json([
+            return ApiResponse::success([
                 'message' => 'Valoración cancelada correctamente',
-                'data' => $medicalEvaluation->load(['patient', 'user', 'canceledBy']),
+                'data'    => $evaluation->load(['patient', 'user', 'canceledBy']),
             ]);
-        } catch (\Throwable $th) {
-            return response()->json(['error' => $th->getMessage()], 500);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al cancelar la valoración', debug: $e->getMessage());
         }
-    }
-
-    // MOSTRAR TODAS LAS VALORACIONES POR PACIENTE
-    public function showByPatient(int $patientId)
-    {
-        $user = auth()->user();
-        if (!$user) {
-            return response()->json([
-                'message' => 'No autenticado'
-            ], 401);
-        }
-
-        if ($user->status !== User::STATUS_ACTIVE) {
-            return response()->json([
-                'message' => 'Tu cuenta no está activa.'
-            ], 403);
-        }
-
-        if ($user->isRemitente()) {
-            $patient = Patient::find($patientId);
-            if (!$patient || $patient->user_id !== $user->id) {
-                return response()->json(['message' => 'No autorizado'], 403);
-            }
-        }
-
-        $evaluation = MedicalEvaluation::with([
-                'patient',
-                'procedures.items',
-                'user',
-                'confirmedBy',
-                'canceledBy',
-            ])
-            ->where('patient_id', $patientId)
-            ->get()
-            ->sortByDesc(function ($eval) {
-                return $eval->procedures->max('procedure_date');
-            })
-            ->values();
-
-        if ($evaluation->isEmpty()) {
-            return response()->json([
-                'message' => 'Este paciente no tiene valoraciones médicas',
-            ], 404);
-        }
-
-        return response()->json([
-            'data' => $evaluation,
-        ]);
-    }
-
-    // MOSTRAR UNA VALORACIÓN POR ID
-    public function showById(int $id)
-    {
-        try {
-            $user = auth()->user();
-            if (!$user) {
-                return response()->json([
-                    'message' => 'No autenticado'
-                ], 401);
-            }
-
-            if ($user->status !== User::STATUS_ACTIVE) {
-                return response()->json([
-                    'message' => 'Tu cuenta no está activa.'
-                ], 403);
-            }
-
-            $evaluation = MedicalEvaluation::with([
-                    'patient',
-                    'procedures.items',
-                    'user',
-                    'confirmedBy',
-                    'canceledBy',
-                ])->find($id);
-
-            if (!$evaluation) {
-                return response()->json([
-                    'message' => 'No se encontró la valoración médica solicitada',
-                ], 404);
-            }
-
-            if ($user->isRemitente() && $evaluation->patient->user_id !== $user->id) {
-                return response()->json(['message' => 'No autorizado'], 403);
-            }
-
-            return response()->json([
-                'data' => $evaluation,
-            ], 200);
-
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error' => 'Error',
-                'details' => $th->getMessage(),
-            ], 500);
-        }
-    }
-
-    // FUNCIÓN PRIVADA BMI
-    private function getBmiStatus(float $bmi): string
-    {
-        return match (true) {
-            $bmi < 16.0 => 'Delgadez severa (< 16.0)',
-            $bmi < 17.0 => 'Delgadez moderada (16.0–16.9)',
-            $bmi < 18.5 => 'Delgadez leve (17.0–18.4)',
-            $bmi < 25.0 => 'Peso normal (18.5–24.9)',
-            $bmi < 30.0 => 'Sobrepeso (25.0–29.9)',
-            $bmi < 35.0 => 'Obesidad grado I (30.0–34.9)',
-            $bmi < 40.0 => 'Obesidad grado II (35.0–39.9)',
-            default => 'Obesidad grado III (≥ 40)',
-        };
     }
 }
