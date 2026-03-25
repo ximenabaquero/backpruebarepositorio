@@ -3,83 +3,82 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Http\Requests\CreateRemitenteRequest;
+use App\Http\Requests\UpdateUserRequest;
+use App\Http\Responses\ApiResponse;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Hash;
+use Throwable;
 
 class UserController extends Controller
 {
+    // ─────────────────────────────────────────────
+    // ADMIN
+    // ─────────────────────────────────────────────
 
-    // Editar campos del admin
-    public function updateAdmin(Request $request, $id)
+    /**
+     * Editar campos del admin autenticado.
+     * Solo puede modificar su propia cuenta.
+     * Si se envía password debe cumplir los requisitos de UpdateUserRequest.
+     */
+    public function updateAdmin(UpdateUserRequest $request, int $id): JsonResponse
     {
         $user = User::findOrFail($id);
 
-        // Verificar que sea admin
-        if ($user->role !== User::ROLE_ADMIN) {
-            return response()->json([
-                'message' => 'Solo se puede modificar un administrador'
-            ], 400);
+        if (! $user->isAdmin()) {
+            return ApiResponse::error('Solo se puede modificar un administrador', 400);
         }
+
         if (auth()->id() !== $user->id) {
-            return response()->json([
-                'message' => 'Solo puedes modificar tu propia cuenta.'
-            ], 403);
+            return ApiResponse::forbidden('Solo puedes modificar tu propia cuenta.');
         }
 
-        $request->validate([
-            'name' => 'sometimes|string|max:50|unique:users,name,' . $id,
-            'first_name' => 'sometimes|string|max:100',
-            'last_name'  => 'sometimes|string|max:100',
-            'email'    => 'sometimes|email|unique:users,email,' . $id,
-            'password' => 'sometimes|min:6'
-        ]);
-
         try {
-            // Evitar que cambie rol o status
-            $user->update($request->only([
-                'name',
-                'email',
-                'first_name',
-                'last_name',
-                'password'
-            ]));
+            $data = $request->validated();
 
-            return response()->json([
+            if (isset($data['password'])) {
+                $data['password'] = Hash::make($data['password']);
+            }
+
+            $user->update($data);
+
+            return ApiResponse::success([
                 'message' => 'Administrador actualizado correctamente',
-                'user' => $user
+                'user'    => $user,
             ]);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error' => $th->getMessage()
-            ], 500);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al actualizar el administrador', debug: $e->getMessage());
         }
     }
 
-    // Listar remitentes
-    public function listRemitentes()
+    // ─────────────────────────────────────────────
+    // REMITENTES
+    // ─────────────────────────────────────────────
+
+    /**
+     * Listar todos los remitentes.
+     */
+    public function listRemitentes(): JsonResponse
     {
         try {
-            $remitentes = User::where('role', User::ROLE_REMITENTE)->orderBy('created_at', 'desc')->get();
-            return response()->json($remitentes);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error' => $th->getMessage()
-            ], 500);
+            $remitentes = User::where('role', User::ROLE_REMITENTE)
+                ->orderByDesc('created_at')
+                ->get();
+
+            return ApiResponse::success($remitentes);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al listar remitentes', debug: $e->getMessage());
         }
     }
 
-    // Crear remitente
-    public function createRemitente(Request $request)
+    /**
+     * Crear un nuevo remitente.
+     * Contraseña: mínimo 8, máximo 64, mayúscula, minúscula, número, símbolo.
+     * Requiere password_confirmation en el request.
+     */
+    public function createRemitente(CreateRemitenteRequest $request): JsonResponse
     {
-        $request->validate([
-            'name' => 'required|string|max:50|unique:users,name',
-            'first_name' => 'required|string|max:100',
-            'last_name'  => 'required|string|max:100',
-            'cellphone'  => 'required|string|max:15',
-            'email'      => 'required|email|unique:users',
-            'password'   => 'required|min:6'
-        ]);
-
         try {
             $user = User::create([
                 'name'       => $request->name,
@@ -89,146 +88,107 @@ class UserController extends Controller
                 'brand_name' => config('app.brand_name'),
                 'brand_slug' => config('app.brand_slug'),
                 'email'      => $request->email,
-                'password'   => $request->password,
+                'password'   => Hash::make($request->password),
                 'role'       => User::ROLE_REMITENTE,
-                'status' => User::STATUS_ACTIVE,
+                'status'     => User::STATUS_ACTIVE,
             ]);
 
-            return response()->json([
+            return ApiResponse::success([
                 'message' => 'Remitente creado correctamente',
-                'user' => $user
+                'user'    => $user,
             ], 201);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error' => $th->getMessage()
-            ], 500);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al crear el remitente', debug: $e->getMessage());
         }
     }
 
-    // Modificar remitente
-    public function updateRemitente(Request $request, $id)
+    /**
+     * Actualizar datos de un remitente.
+     * Si se envía password debe cumplir los mismos requisitos que al crear.
+     */
+    public function updateRemitente(UpdateUserRequest $request, int $id): JsonResponse
     {
         $user = User::findOrFail($id);
 
-        // Verificar que sea remitente
-        if ($user->role !== User::ROLE_REMITENTE) {
-            return response()->json([
-                'message' => 'Solo se pueden modificar remitentes'
-            ], 400);
+        if (! $user->isRemitente()) {
+            return ApiResponse::error('Solo se pueden modificar remitentes', 400);
         }
 
         if ($user->status === User::STATUS_FIRED) {
-            return response()->json([
-                'message' => 'No se puede modificar un remitente despedido. Debe activarse primero.'
-            ], 400);
+            return ApiResponse::error(
+                'No se puede modificar un remitente despedido. Debe activarse primero.',
+                400
+            );
         }
 
-        $request->validate([
-            'name' => 'sometimes|string|max:50|unique:users,name,' . $id,
-            'first_name' => 'sometimes|string|max:100',
-            'last_name'  => 'sometimes|string|max:100',
-            'cellphone'  => 'sometimes|string|max:15',
-            'email'      => 'sometimes|email|unique:users,email,' . $id,
-            'password'   => 'sometimes|min:6'
-        ]);
-
         try {
-            // Actualizar datos permitidos
-            $user->update($request->only([
-                'name',
-                'first_name',
-                'last_name',
-                'cellphone',
-                'email',
-                'password'
-            ]));
+            $data = $request->validated();
 
-            return response()->json([
+            if (isset($data['password'])) {
+                $data['password'] = Hash::make($data['password']);
+            }
+
+            $user->update($data);
+
+            return ApiResponse::success([
                 'message' => 'Remitente actualizado correctamente',
-                'user' => $user
+                'user'    => $user,
             ]);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error' => $th->getMessage()
-            ], 500);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al actualizar el remitente', debug: $e->getMessage());
         }
     }
 
-    // Activar remitente
-    public function activarRemitente($id)
+    /**
+     * Activar un remitente.
+     */
+    public function activarRemitente(int $id): JsonResponse
+    {
+        return $this->changeRemitenteStatus($id, User::STATUS_ACTIVE, 'activado');
+    }
+
+    /**
+     * Inactivar un remitente (pausa temporal).
+     */
+    public function inactivarRemitente(int $id): JsonResponse
+    {
+        return $this->changeRemitenteStatus($id, User::STATUS_INACTIVE, 'inactivado');
+    }
+
+    /**
+     * Marcar un remitente como despedido.
+     */
+    public function despedirRemitente(int $id): JsonResponse
+    {
+        return $this->changeRemitenteStatus($id, User::STATUS_FIRED, 'marcado como despedido');
+    }
+
+    // ─────────────────────────────────────────────
+    // PRIVADO
+    // ─────────────────────────────────────────────
+
+    /**
+     * Punto único para activar / inactivar / despedir.
+     * Elimina la triplicación de lógica de cambio de estado.
+     */
+    private function changeRemitenteStatus(int $id, string $status, string $verb): JsonResponse
     {
         try {
             $user = User::findOrFail($id);
 
-            if ($user->role !== User::ROLE_REMITENTE) {
-                return response()->json([
-                    'message' => 'Solo se pueden modificar remitentes'
-                ], 400);
+            if (! $user->isRemitente()) {
+                return ApiResponse::error('Solo se pueden modificar remitentes', 400);
             }
 
-            $user->status = User::STATUS_ACTIVE;
+            $user->status = $status;
             $user->save();
 
-            return response()->json([
-                'message' => 'Remitente activado correctamente',
-                'user' => $user
+            return ApiResponse::success([
+                'message' => "Remitente {$verb} correctamente",
+                'user'    => $user,
             ]);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error' => $th->getMessage()
-            ], 500);
-        }
-    }
-
-    // Inactivar remitente (pausa temporal)
-    public function inactivarRemitente($id)
-    {
-        try {
-            $user = User::findOrFail($id);
-
-            if ($user->role !== User::ROLE_REMITENTE) {
-                return response()->json([
-                    'message' => 'Solo se pueden modificar remitentes'
-                ], 400);
-            }
-
-            $user->status = User::STATUS_INACTIVE;
-            $user->save();
-
-            return response()->json([
-                'message' => 'Remitente inactivado correctamente',
-                'user' => $user
-            ]);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error' => $th->getMessage()
-            ], 500);
-        }
-    }
-
-    // Despedir remitente
-    public function despedirRemitente($id)
-    {
-        try {
-            $user = User::findOrFail($id);
-
-            if ($user->role !== User::ROLE_REMITENTE) {
-                return response()->json([
-                    'message' => 'Solo se pueden modificar remitentes'
-                ], 400);
-            }
-
-            $user->status = User::STATUS_FIRED;
-            $user->save();
-
-            return response()->json([
-                'message' => 'Remitente marcado como despedido',
-                'user' => $user
-            ]);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'error' => $th->getMessage()
-            ], 500);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al cambiar el estado del remitente', debug: $e->getMessage());
         }
     }
 }

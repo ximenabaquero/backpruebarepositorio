@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class InventoryProduct extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'category_id',
         'name',
@@ -16,9 +19,9 @@ class InventoryProduct extends Model
     ];
 
     protected $casts = [
-        'active' => 'boolean',
+        'active'     => 'boolean',
         'unit_price' => 'float',
-        'stock' => 'integer',
+        'stock'      => 'integer',
     ];
 
     public function category()

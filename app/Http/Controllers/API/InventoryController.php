@@ -3,46 +3,61 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Http\Responses\ApiResponse;
 use App\Models\InventoryCategory;
 use App\Models\InventoryProduct;
 use App\Models\InventoryPurchase;
 use App\Models\InventoryUsage;
 use App\Models\ProcedureItem;
-use App\Models\MedicalEvaluation;
+use App\Services\InventoryStockService;
+use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Throwable;
 
 class InventoryController extends Controller
 {
+    public function __construct(
+        private readonly InventoryStockService $stockService
+    ) {}
+
     // ══════════════════════════════════════════
-    // CATEGORÍAS (solo ADMIN)
+    // CATEGORÍAS (solo ADMIN — middleware en rutas)
     // ══════════════════════════════════════════
 
-    public function categoriesIndex(Request $request)
+    public function categoriesIndex(): JsonResponse
     {
-        return response()->json(
-            InventoryCategory::orderBy('name')->get()
-        );
+        try {
+            return ApiResponse::success(
+                InventoryCategory::orderBy('name')->get()
+            );
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener categorías', debug: $e->getMessage());
+        }
     }
 
-    public function categoriesStore(Request $request)
+    public function categoriesStore(Request $request): JsonResponse
     {
         $data = $request->validate([
             'name'  => 'required|string|max:100',
             'color' => 'required|string|max:7',
         ]);
 
-        $category = InventoryCategory::create([
-            'user_id' => $request->user()->id,
-            'name'    => $data['name'],
-            'color'   => $data['color'],
-        ]);
+        try {
+            $category = InventoryCategory::create([
+                'user_id' => $request->user()->id,
+                'name'    => $data['name'],
+                'color'   => $data['color'],
+            ]);
 
-        return response()->json($category, 201);
+            return ApiResponse::success($category, 201);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al crear la categoría', debug: $e->getMessage());
+        }
     }
 
-    public function categoriesUpdate(Request $request, int $id)
+    public function categoriesUpdate(Request $request, int $id): JsonResponse
     {
         $category = InventoryCategory::findOrFail($id);
 
@@ -51,38 +66,51 @@ class InventoryController extends Controller
             'color' => 'sometimes|string|max:7',
         ]);
 
-        $category->update($data);
+        try {
+            $category->update($data);
 
-        return response()->json($category);
-    }
-
-    public function categoriesDestroy(int $id)
-    {
-        $category = InventoryCategory::findOrFail($id);
-
-        if ($category->products()->exists() || $category->purchases()->exists()) {
-            return response()->json([
-                'message' => 'No se puede eliminar una categoría que tiene productos o compras asociadas.',
-            ], 422);
+            return ApiResponse::success($category);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al actualizar la categoría', debug: $e->getMessage());
         }
-
-        $category->delete();
-
-        return response()->json(null, 204);
     }
 
-    // ══════════════════════════════════════════
-    // PRODUCTOS (solo ADMIN)
-    // ══════════════════════════════════════════
-
-    public function productsIndex()
+    public function categoriesDestroy(int $id): JsonResponse
     {
-        return response()->json(
-            InventoryProduct::with('category')->orderBy('name')->get()
-        );
+        try {
+            $category = InventoryCategory::findOrFail($id);
+
+            if ($category->products()->exists() || $category->purchases()->exists()) {
+                return ApiResponse::error(
+                    'No se puede eliminar una categoría que tiene productos o compras asociadas.',
+                    422
+                );
+            }
+
+            $category->delete();
+
+            return ApiResponse::success(['message' => 'Categoría eliminada correctamente']);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al eliminar la categoría', debug: $e->getMessage());
+        }
     }
 
-    public function productsStore(Request $request)
+    // ══════════════════════════════════════════
+    // PRODUCTOS (solo ADMIN — middleware en rutas)
+    // ══════════════════════════════════════════
+
+    public function productsIndex(): JsonResponse
+    {
+        try {
+            return ApiResponse::success(
+                InventoryProduct::with('category')->orderBy('name')->get()
+            );
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener productos', debug: $e->getMessage());
+        }
+    }
+
+    public function productsStore(Request $request): JsonResponse
     {
         $data = $request->validate([
             'category_id' => 'required|exists:inventory_categories,id',
@@ -92,13 +120,17 @@ class InventoryController extends Controller
             'stock'       => 'required|integer|min:0',
         ]);
 
-        $product = InventoryProduct::create($data);
-        $product->load('category');
+        try {
+            $product = InventoryProduct::create($data);
+            $product->load('category');
 
-        return response()->json($product, 201);
+            return ApiResponse::success($product, 201);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al crear el producto', debug: $e->getMessage());
+        }
     }
 
-    public function productsUpdate(Request $request, int $id)
+    public function productsUpdate(Request $request, int $id): JsonResponse
     {
         $product = InventoryProduct::findOrFail($id);
 
@@ -111,58 +143,73 @@ class InventoryController extends Controller
             'active'      => 'sometimes|boolean',
         ]);
 
-        $product->update($data);
-        $product->load('category');
+        try {
+            $product->update($data);
+            $product->load('category');
 
-        return response()->json($product);
+            return ApiResponse::success($product);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al actualizar el producto', debug: $e->getMessage());
+        }
     }
 
-    public function productsDestroy(int $id)
+    public function productsDestroy(int $id): JsonResponse
     {
-        $product = InventoryProduct::findOrFail($id);
+        try {
+            $product = InventoryProduct::findOrFail($id);
 
-        if ($product->usages()->exists()) {
-            return response()->json([
-                'message' => 'No se puede eliminar un producto que tiene consumos registrados.',
-            ], 422);
+            if ($product->usages()->exists()) {
+                return ApiResponse::error(
+                    'No se puede eliminar un producto que tiene consumos registrados.',
+                    422
+                );
+            }
+
+            $product->delete();
+
+            return ApiResponse::success(['message' => 'Producto eliminado correctamente']);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al eliminar el producto', debug: $e->getMessage());
         }
-
-        $product->delete();
-
-        return response()->json(null, 204);
     }
 
     // ══════════════════════════════════════════
     // COMPRAS (ambos roles)
-    // ADMIN ve todas, REMITENTE solo las suyas
     // ══════════════════════════════════════════
 
-    public function purchasesIndex(Request $request)
+    public function purchasesIndex(Request $request): JsonResponse
     {
-        $user  = $request->user();
-        $query = InventoryPurchase::with(['category', 'product', 'user:id,first_name,last_name']);
+        try {
+            $user  = $request->user();
+            $query = InventoryPurchase::with([
+                'category',
+                'product',
+                'user:id,first_name,last_name',
+            ]);
 
-        // REMITENTE solo ve sus propias compras
-        if (! $user->isAdmin()) {
-            $query->where('user_id', $user->id);
-        }
+            if (! $user->isAdmin()) {
+                $query->where('user_id', $user->id);
+            }
 
-        if ($request->filled('month')) {
-            $query->whereMonth('purchase_date', $request->month);
-        }
-        if ($request->filled('year')) {
-            $query->whereYear('purchase_date', $request->year);
-        }
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
-        }
+            if ($request->filled('month')) {
+                $query->whereMonth('purchase_date', $request->month);
+            }
+            if ($request->filled('year')) {
+                $query->whereYear('purchase_date', $request->year);
+            }
+            if ($request->filled('category_id')) {
+                $query->where('category_id', $request->category_id);
+            }
 
-        return response()->json(
-            $query->orderByDesc('purchase_date')->get()
-        );
+            return ApiResponse::success(
+                $query->orderByDesc('purchase_date')->get()
+            );
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener compras', debug: $e->getMessage());
+        }
     }
 
-    public function purchasesStore(Request $request)
+    public function purchasesStore(Request $request): JsonResponse
     {
         $data = $request->validate([
             'category_id'   => 'required|exists:inventory_categories,id',
@@ -177,30 +224,21 @@ class InventoryController extends Controller
         $data['user_id']     = $request->user()->id;
         $data['total_price'] = $data['quantity'] * $data['unit_price'];
 
-        $purchase = DB::transaction(function () use ($data) {
-            // Si la compra está vinculada a un producto, actualizar el stock
-            if (! empty($data['product_id'])) {
-                InventoryProduct::where('id', $data['product_id'])
-                    ->increment('stock', $data['quantity']);
-            }
+        try {
+            $purchase = $this->stockService->registerPurchase($data);
 
-            $purchase = InventoryPurchase::create($data);
-            $purchase->load(['category', 'product', 'user:id,first_name,last_name']);
-
-            return $purchase;
-        });
-
-        return response()->json($purchase, 201);
+            return ApiResponse::success($purchase, 201);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al registrar la compra', debug: $e->getMessage());
+        }
     }
 
-    public function purchasesUpdate(Request $request, int $id)
+    public function purchasesUpdate(Request $request, int $id): JsonResponse
     {
         $purchase = InventoryPurchase::findOrFail($id);
-        $user     = $request->user();
 
-        // REMITENTE solo puede editar sus propias compras
-        if (! $user->isAdmin() && $purchase->user_id !== $user->id) {
-            return response()->json(['message' => 'No autorizado.'], 403);
+        if (! $this->canModify($request->user(), $purchase->user_id)) {
+            return ApiResponse::forbidden('No autorizado.');
         }
 
         $data = $request->validate([
@@ -213,62 +251,76 @@ class InventoryController extends Controller
             'notes'         => 'nullable|string',
         ]);
 
+        // Recalcular total si cambia cantidad o precio
         if (isset($data['quantity']) || isset($data['unit_price'])) {
-            $qty   = $data['quantity']   ?? $purchase->quantity;
-            $price = $data['unit_price'] ?? $purchase->unit_price;
-            $data['total_price'] = $qty * $price;
+            $data['total_price'] = ($data['quantity'] ?? $purchase->quantity)
+                                 * ($data['unit_price'] ?? $purchase->unit_price);
         }
 
-        $purchase->update($data);
-        $purchase->load(['category', 'product', 'user:id,first_name,last_name']);
+        try {
+            // Transacción en el service — stock + update atómicos
+            $purchase = $this->stockService->updatePurchase($purchase, $data);
+            $purchase->load(['category', 'product', 'user:id,first_name,last_name']);
 
-        return response()->json($purchase);
+            return ApiResponse::success($purchase);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al actualizar la compra', debug: $e->getMessage());
+        }
     }
 
-    public function purchasesDestroy(Request $request, int $id)
+    public function purchasesDestroy(Request $request, int $id): JsonResponse
     {
-        $purchase = InventoryPurchase::findOrFail($id);
-        $user     = $request->user();
+        try {
+            $purchase = InventoryPurchase::findOrFail($id);
 
-        if (! $user->isAdmin() && $purchase->user_id !== $user->id) {
-            return response()->json(['message' => 'No autorizado.'], 403);
+            if (! $this->canModify($request->user(), $purchase->user_id)) {
+                return ApiResponse::forbidden('No autorizado.');
+            }
+
+            $purchase->delete();
+
+            return ApiResponse::success(['message' => 'Compra eliminada correctamente']);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al eliminar la compra', debug: $e->getMessage());
         }
-
-        $purchase->delete();
-
-        return response()->json(null, 204);
     }
 
     // ══════════════════════════════════════════
     // CONSUMOS (ambos roles)
-    // ADMIN ve todos, REMITENTE solo los suyos
     // ══════════════════════════════════════════
 
-    public function usagesIndex(Request $request)
+    public function usagesIndex(Request $request): JsonResponse
     {
-        $user  = $request->user();
-        $query = InventoryUsage::with(['product.category', 'user:id,first_name,last_name']);
+        try {
+            $user  = $request->user();
+            $query = InventoryUsage::with([
+                'product.category',
+                'user:id,first_name,last_name',
+            ]);
 
-        if (! $user->isAdmin()) {
-            $query->where('user_id', $user->id);
-        }
+            if (! $user->isAdmin()) {
+                $query->where('user_id', $user->id);
+            }
 
-        if ($request->filled('month')) {
-            $query->whereMonth('usage_date', $request->month);
-        }
-        if ($request->filled('year')) {
-            $query->whereYear('usage_date', $request->year);
-        }
-        if ($request->filled('product_id')) {
-            $query->where('product_id', $request->product_id);
-        }
+            if ($request->filled('month')) {
+                $query->whereMonth('usage_date', $request->month);
+            }
+            if ($request->filled('year')) {
+                $query->whereYear('usage_date', $request->year);
+            }
+            if ($request->filled('product_id')) {
+                $query->where('product_id', $request->product_id);
+            }
 
-        return response()->json(
-            $query->orderByDesc('usage_date')->get()
-        );
+            return ApiResponse::success(
+                $query->orderByDesc('usage_date')->get()
+            );
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener consumos', debug: $e->getMessage());
+        }
     }
 
-    public function usagesStore(Request $request)
+    public function usagesStore(Request $request): JsonResponse
     {
         $data = $request->validate([
             'product_id' => 'required|exists:inventory_products,id',
@@ -279,102 +331,111 @@ class InventoryController extends Controller
 
         $data['user_id'] = $request->user()->id;
 
-        // Validar stock suficiente antes de registrar
-        $product = InventoryProduct::findOrFail($data['product_id']);
-        if ($product->stock < $data['quantity']) {
-            return response()->json([
-                'message' => "Stock insuficiente. Disponible: {$product->stock} unidades.",
-            ], 422);
+        try {
+            $usage = $this->stockService->registerUsage($data);
+
+            return ApiResponse::success($usage, 201);
+        } catch (\RuntimeException $e) {
+            // Stock insuficiente — error de negocio controlado
+            return ApiResponse::error($e->getMessage(), 422);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al registrar el consumo', debug: $e->getMessage());
         }
-
-        $usage = DB::transaction(function () use ($data, $product) {
-            $product->decrement('stock', $data['quantity']);
-
-            $usage = InventoryUsage::create($data);
-            $usage->load(['product.category', 'user:id,first_name,last_name']);
-
-            return $usage;
-        });
-
-        return response()->json($usage, 201);
     }
 
-    public function usagesDestroy(Request $request, int $id)
+    public function usagesDestroy(Request $request, int $id): JsonResponse
     {
-        $usage = InventoryUsage::findOrFail($id);
-        $user  = $request->user();
+        try {
+            $usage = InventoryUsage::findOrFail($id);
 
-        if (! $user->isAdmin() && $usage->user_id !== $user->id) {
-            return response()->json(['message' => 'No autorizado.'], 403);
+            if (! $this->canModify($request->user(), $usage->user_id)) {
+                return ApiResponse::forbidden('No autorizado.');
+            }
+
+            // Transacción en el service — stock + delete atómicos
+            $this->stockService->deleteUsage($usage);
+
+            return ApiResponse::success(['message' => 'Consumo eliminado correctamente']);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al eliminar el consumo', debug: $e->getMessage());
         }
-
-        // Devolver al stock al eliminar el consumo
-        InventoryProduct::where('id', $usage->product_id)
-            ->increment('stock', $usage->quantity);
-
-        $usage->delete();
-
-        return response()->json(null, 204);
     }
 
     // ══════════════════════════════════════════
     // RESUMEN (gastos vs ingresos)
-    // ADMIN: ve gastos totales + ingresos + margen
-    // REMITENTE: ve solo sus gastos
     // ══════════════════════════════════════════
 
-    public function summary(Request $request)
+    public function summary(Request $request): JsonResponse
     {
         $month = (int) ($request->query('month') ?? Carbon::now()->month);
         $year  = (int) ($request->query('year')  ?? Carbon::now()->year);
         $user  = $request->user();
 
-        // Gastos del período
-        $purchasesQuery = InventoryPurchase::whereMonth('purchase_date', $month)
-            ->whereYear('purchase_date', $year);
+        try {
+            $purchasesQuery = InventoryPurchase::whereMonth('purchase_date', $month)
+                ->whereYear('purchase_date', $year);
 
-        if (! $user->isAdmin()) {
-            $purchasesQuery->where('inventory_purchases.user_id', $user->id);
+            if (! $user->isAdmin()) {
+                $purchasesQuery->where('inventory_purchases.user_id', $user->id);
+            }
+
+            $totalExpenses = (float) $purchasesQuery->sum('total_price');
+
+            $byCategory = $purchasesQuery->clone()
+                ->join('inventory_categories', 'inventory_purchases.category_id', '=', 'inventory_categories.id')
+                ->select(
+                    'inventory_categories.name as category',
+                    'inventory_categories.color',
+                    DB::raw('SUM(inventory_purchases.total_price) as total')
+                )
+                ->groupBy('inventory_categories.id', 'inventory_categories.name', 'inventory_categories.color')
+                ->orderByDesc('total')
+                ->get()
+                ->map(fn($row) => [
+                    'category' => $row->category,
+                    'color'    => $row->color,
+                    'total'    => (float) $row->total,
+                ]);
+
+            $response = [
+                'month'          => $month,
+                'year'           => $year,
+                'total_expenses' => $totalExpenses,
+                'by_category'    => $byCategory,
+            ];
+
+            // Solo ADMIN ve ingresos y margen neto
+            if ($user->isAdmin()) {
+                // JOIN en vez de whereHas — evita subquery EXISTS sin índice
+                $totalIncome = (float) DB::table('procedure_items')
+                    ->join('procedures', 'procedure_items.procedure_id', '=', 'procedures.id')
+                    ->join('medical_evaluations', 'procedures.medical_evaluation_id', '=', 'medical_evaluations.id')
+                    ->where('medical_evaluations.status', 'CONFIRMADO')
+                    ->whereMonth('medical_evaluations.confirmed_at', $month)
+                    ->whereYear('medical_evaluations.confirmed_at', $year)
+                    ->sum('procedure_items.price');
+
+                $response['total_income'] = $totalIncome;
+                $response['net_profit']   = $totalIncome - $totalExpenses;
+            }
+
+            return ApiResponse::success($response);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener el resumen', debug: $e->getMessage());
         }
+    }
 
-        $totalExpenses = (float) $purchasesQuery->sum('total_price');
+    // ─────────────────────────────────────────────
+    // Privado
+    // ─────────────────────────────────────────────
 
-        // Gastos agrupados por categoría
-        $byCategory = $purchasesQuery->clone()
-            ->join('inventory_categories', 'inventory_purchases.category_id', '=', 'inventory_categories.id')
-            ->select(
-                'inventory_categories.name as category',
-                'inventory_categories.color',
-                DB::raw('SUM(inventory_purchases.total_price) as total')
-            )
-            ->groupBy('inventory_categories.id', 'inventory_categories.name', 'inventory_categories.color')
-            ->orderByDesc('total')
-            ->get()
-            ->map(fn($row) => [
-                'category' => $row->category,
-                'color'    => $row->color,
-                'total'    => (float) $row->total,
-            ]);
-
-        $response = [
-            'month'          => $month,
-            'year'           => $year,
-            'total_expenses' => $totalExpenses,
-            'by_category'    => $byCategory,
-        ];
-
-        // Solo ADMIN ve ingresos y margen neto
-        if ($user->isAdmin()) {
-            $totalIncome = (float) ProcedureItem::whereHas('procedure.medicalEvaluation', function ($q) use ($month, $year) {
-                $q->where('status', 'CONFIRMADO')
-                  ->whereMonth('confirmed_at', $month)
-                  ->whereYear('confirmed_at', $year);
-            })->sum('price');
-
-            $response['total_income'] = $totalIncome;
-            $response['net_profit']   = $totalIncome - $totalExpenses;
-        }
-
-        return response()->json($response);
+    /**
+     * Verifica si el usuario puede modificar un recurso.
+     * ADMIN puede modificar cualquiera.
+     * REMITENTE solo puede modificar los suyos.
+     */
+    private function canModify(\App\Models\User $user, int $ownerId): bool
+    {
+        return $user->isAdmin() || $user->id === $ownerId;
     }
 }

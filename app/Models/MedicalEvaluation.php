@@ -9,12 +9,11 @@ class MedicalEvaluation extends Model
 {
     use HasFactory;
 
-    // Constantes de estados
-    const STATUS_EN_ESPERA = 'EN_ESPERA';
+    // Constantes de estado
+    const STATUS_EN_ESPERA  = 'EN_ESPERA';
     const STATUS_CONFIRMADO = 'CONFIRMADO';
-    const STATUS_CANCELADO = 'CANCELADO';
+    const STATUS_CANCELADO  = 'CANCELADO';
 
-    // Atributos
     protected $fillable = [
         'user_id',
         'patient_id',
@@ -37,34 +36,44 @@ class MedicalEvaluation extends Model
     protected function casts(): array
     {
         return [
-            'confirmed_at'     => 'datetime',
-            'canceled_at'      => 'datetime',
+            'confirmed_at'      => 'datetime',
+            'canceled_at'       => 'datetime',
             'terms_accepted_at' => 'datetime',
         ];
     }
 
+    // ─────────────────────────────────────────────
     // Helpers de estado
-    public function isEnEspera()
+    // ─────────────────────────────────────────────
+
+    public function isEnEspera(): bool
     {
         return $this->status === self::STATUS_EN_ESPERA;
     }
 
-    public function isConfirmado()
+    public function isConfirmado(): bool
     {
         return $this->status === self::STATUS_CONFIRMADO;
     }
 
-    public function isCancelado()
+    public function isCancelado(): bool
     {
         return $this->status === self::STATUS_CANCELADO;
     }
+
+    // ─────────────────────────────────────────────
+    // Scopes
+    // ─────────────────────────────────────────────
 
     public function scopeConfirmado($query)
     {
         return $query->where('status', self::STATUS_CONFIRMADO);
     }
 
-    /* Relaciones */
+    // ─────────────────────────────────────────────
+    // Relaciones
+    // ─────────────────────────────────────────────
+
     public function user()
     {
         return $this->belongsTo(User::class);

@@ -9,14 +9,16 @@ class ProcedureItem extends Model
 {
     use HasFactory;
 
-    // Atributos
     protected $fillable = [
         'procedure_id',
         'item_name',
         'price',
     ];
 
-     /* Relaciones */
+    // ─────────────────────────────────────────────
+    // Relaciones
+    // ─────────────────────────────────────────────
+
     public function procedure()
     {
         return $this->belongsTo(Procedure::class);
