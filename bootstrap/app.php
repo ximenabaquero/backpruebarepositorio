@@ -19,29 +19,40 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
 
-        //Trust all proxies (needed for Railway/reverse proxies)
+        // Trust all proxies — necesario en Railway/Heroku/Render donde
+        // la IP del proxy cambia con cada deploy y no puede especificarse.
+        // Railway filtra X-Forwarded-For maliciosos antes de llegar acá.
         $middleware->trustProxies(at: '*');
 
-        //Sanctum (cookies + SPA)
+        // Sanctum (cookies + SPA)
         $middleware->api(prepend: [
             EnsureFrontendRequestsAreStateful::class,
         ]);
 
-        //Alias necesarios
+        // Alias de middleware
         $middleware->alias([
-            'auth' => Authenticate::class,
-            'admin' => AdminMiddleware::class,
+            'auth'   => Authenticate::class,
+            'admin'  => AdminMiddleware::class,
             'active' => EnsureUserIsActive::class,
+        ]);
+
+        // Aplicar throttle:api globalmente a todas las rutas del grupo api
+        // Evita tener que recordar aplicarlo ruta por ruta
+        // Los limitadores están configurados en AppServiceProvider
+        $middleware->api(append: [
+            'throttle:api',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Respuesta 401 consistente con ApiResponse usado en todo el sistema
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->expectsJson()) {
                 return response()->json([
-                    'message' => 'Unauthenticated.'
+                    'data'    => null,
+                    'error'   => 'Unauthenticated',
+                    'message' => 'error',
                 ], 401);
             }
         });
     })
     ->create();
-

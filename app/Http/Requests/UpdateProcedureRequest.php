@@ -14,7 +14,7 @@ class UpdateProcedureRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'notes'             => ['sometimes', 'nullable', 'string'],
+            'notes'             => ['sometimes', 'required', 'string'],
             // Si se envían items, reemplaza todos los existentes
             'items'             => ['sometimes', 'array', 'min:1'],
             'items.*.item_name' => ['required_with:items', 'string', 'max:100'],

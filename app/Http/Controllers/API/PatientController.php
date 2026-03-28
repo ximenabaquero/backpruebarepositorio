@@ -14,16 +14,24 @@ use Throwable;
 /**
  * PatientController
  *
- * Middlewares aplicados en api.php:
- *   - auth:sanctum     → usuario autenticado
- *   - active           → cuenta activa (EnsureUserIsActive)
+ * Responsabilidad: listado, creación y edición de pacientes.
+ * El detalle del paciente fue eliminado — reemplazado por
+ * GET /patients/{patient}/clinical-records (Vista 1) que devuelve
+ * los datos del paciente junto a sus evaluaciones en una sola llamada.
  *
- * El check de cuenta activa ya no vive acá — está en el middleware.
+ * Rutas en api.php:
+ *   GET  /patients           → index()
+ *   POST /patients           → store()
+ *   PUT  /patients/{patient} → update()
+ *
+ * Autorización por rol:
+ *   REMITENTE → solo ve y opera sobre sus propios pacientes
+ *   ADMIN     → ve y opera sobre todos los pacientes
  */
 class PatientController extends Controller
 {
     /**
-     * Listar pacientes.
+     * Listar pacientes con búsqueda opcional por nombre, apellido, cédula o celular.
      * REMITENTE ve solo los suyos. ADMIN los ve todos.
      */
     public function index(Request $request): JsonResponse
@@ -51,31 +59,9 @@ class PatientController extends Controller
     }
 
     /**
-     * Ver detalle de un paciente con historial completo.
-     */
-    public function show(Patient $patient): JsonResponse
-    {
-        try {
-            $user = auth()->user();
-
-            if ($user->isRemitente() && $patient->user_id !== $user->id) {
-                return ApiResponse::forbidden();
-            }
-
-            $patient->load([
-                'medicalEvaluations.procedures.items',
-                'user',
-            ]);
-
-            return ApiResponse::success($patient);
-        } catch (Throwable $e) {
-            return ApiResponse::error('Error al obtener el paciente', debug: $e->getMessage());
-        }
-    }
-
-    /**
      * Crear paciente.
-     * Si ya existe por cédula, devuelve el existente con 200.
+     * Si ya existe un paciente con esa cédula, devuelve el existente con 200
+     * para que el frontend redirija al historial sin crear duplicado.
      */
     public function store(StorePatientRequest $request): JsonResponse
     {
@@ -83,7 +69,6 @@ class PatientController extends Controller
             $data = $request->validated();
             $user = auth()->user();
 
-            // Si ya existe un paciente con esa cédula, devolverlo sin crear duplicado
             $existing = Patient::where('cedula', $data['cedula'])->first();
             if ($existing) {
                 return ApiResponse::success([
@@ -113,7 +98,8 @@ class PatientController extends Controller
     }
 
     /**
-     * Actualizar paciente.
+     * Actualizar datos de un paciente.
+     * REMITENTE: solo puede editar sus propios pacientes.
      */
     public function update(UpdatePatientRequest $request, Patient $patient): JsonResponse
     {
@@ -124,17 +110,17 @@ class PatientController extends Controller
                 return ApiResponse::forbidden();
             }
 
-            $validated = $request->validated();
+            $data = $request->validated();
 
-            if (isset($validated['first_name'])) {
-                $validated['first_name'] = $this->formatName($validated['first_name']);
+            if (isset($data['first_name'])) {
+                $data['first_name'] = $this->formatName($data['first_name']);
             }
 
-            if (isset($validated['last_name'])) {
-                $validated['last_name'] = $this->formatName($validated['last_name']);
+            if (isset($data['last_name'])) {
+                $data['last_name'] = $this->formatName($data['last_name']);
             }
 
-            $patient->update($validated);
+            $patient->update($data);
 
             return ApiResponse::success([
                 'message' => 'Paciente actualizado correctamente',
@@ -157,7 +143,7 @@ class PatientController extends Controller
     {
         return implode(' ', array_map(
             fn(string $word) => mb_strtoupper(mb_substr($word, 0, 1))
-                              . mb_strtolower(mb_substr($word, 1)),
+                                . mb_strtolower(mb_substr($word, 1)),
             explode(' ', trim($name))
         ));
     }

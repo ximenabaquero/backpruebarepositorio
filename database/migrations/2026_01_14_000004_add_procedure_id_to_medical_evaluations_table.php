@@ -7,27 +7,22 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Run the migrations.
+     * Migración obsoleta — vaciada intencionalmente.
+     *
+     * Originalmente agregaba procedure_id a medical_evaluations,
+     * pero esa relación fue rediseñada: es procedures quien tiene
+     * medical_evaluation_id (relación correcta hasMany).
+     *
+     * La migración que eliminaba procedure_id también fue vaciada.
+     * Ambas se neutralizan — la columna nunca se crea ni se elimina.
      */
     public function up(): void
     {
-        Schema::table('medical_evaluations', function (Blueprint $table) {
-            $table->foreignId('procedure_id')
-                ->constrained('procedures')
-                ->after('id');
-
-            $table->unique('procedure_id');
-        });
+        //
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('medical_evaluations', function (Blueprint $table) {
-            $table->dropUnique(['procedure_id']);
-            $table->dropConstrainedForeignId('procedure_id');
-        });
+        //
     }
 };

@@ -42,10 +42,21 @@ class ClinicalImageController extends Controller
 
     /**
      * Crear una imagen clínica con fotos antes/después.
+     * Máximo 10 imágenes — límite del carrusel público.
      * Acceso: admin (middleware en api.php)
      */
     public function store(Request $request): JsonResponse
     {
+        // Verificar límite de negocio antes de validar el archivo
+        // — evita procesar uploads innecesarios si ya se alcanzó el límite
+        $total = ClinicalImage::count();
+        if ($total >= 10) {
+            return ApiResponse::error(
+                'Se alcanzó el límite máximo de 10 imágenes clínicas. Eliminá una existente antes de agregar una nueva.',
+                422
+            );
+        }
+
         $request->validate([
             'title'        => 'required|string|max:100',
             'description'  => 'nullable|string',
