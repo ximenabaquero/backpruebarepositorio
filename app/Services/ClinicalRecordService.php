@@ -59,6 +59,8 @@ class ClinicalRecordService
         return [
             'patient'     => $patient->only([
                 'id',
+                'first_name',
+                'last_name',
                 'full_name',    // accessor del modelo
                 'document_type',
                 'cedula',

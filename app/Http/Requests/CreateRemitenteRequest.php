@@ -57,7 +57,6 @@ class CreateRemitenteRequest extends FormRequest
             ->max(64)
             ->mixedCase()
             ->numbers()
-            ->symbols()
-            ->uncompromised(); // verifica contra la DB de Have I Been Pwned
+            ->symbols();
     }
 }
