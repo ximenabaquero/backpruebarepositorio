@@ -6,7 +6,9 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\EnsureUserIsActive;
 
