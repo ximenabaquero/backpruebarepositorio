@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthController;
@@ -161,23 +161,4 @@ Route::prefix('v1')->group(function () {
             });
         });
     });
-
-    // TODO: Descomentar cuando se retome el módulo de citas y Google Calendar
-    // Route::middleware(['auth:sanctum', 'active'])->group(function () {
-    //     Route::prefix('google')->group(function () {
-    //         Route::get('/auth',        [GoogleCalendarAuthController::class, 'redirectToGoogle']);
-    //         Route::get('/callback',    [GoogleCalendarAuthController::class, 'handleCallback']);
-    //         Route::get('/status',      [GoogleCalendarAuthController::class, 'getStatus']);
-    //         Route::post('/disconnect', [GoogleCalendarAuthController::class, 'disconnect']);
-    //     });
-    //     Route::prefix('appointments')->group(function () {
-    //         Route::get('/',                        [AppointmentController::class, 'index']);
-    //         Route::get('/upcoming',                [AppointmentController::class, 'upcoming']);
-    //         Route::get('/{appointment}',           [AppointmentController::class, 'show']);
-    //         Route::post('/',                       [AppointmentController::class, 'store']);
-    //         Route::put('/{appointment}',           [AppointmentController::class, 'update']);
-    //         Route::delete('/{appointment}',        [AppointmentController::class, 'destroy']);
-    //         Route::post('/{appointment}/complete', [AppointmentController::class, 'completeAppointment']);
-    //     });
-    // });
 });

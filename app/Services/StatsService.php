@@ -81,8 +81,8 @@ class StatsService
         $now            = Carbon::now();
         $startThisMonth = $now->copy()->startOfMonth();
         $endThisMonth   = $now->copy()->endOfMonth();
-        $startLastMonth = $now->copy()->subMonth()->startOfMonth();
-        $endLastMonth   = $now->copy()->subMonth()->endOfMonth();
+        $startLastMonth = $now->copy()->subMonthNoOverflow()->startOfMonth();
+        $endLastMonth   = $now->copy()->subMonthNoOverflow()->endOfMonth();
 
         $thisMonth = $this->metricsForRange($startThisMonth, $endThisMonth);
         $lastMonth = $this->metricsForRange($startLastMonth, $endLastMonth);
@@ -308,8 +308,8 @@ class StatsService
 
         $currentMonthStart  = $now->copy()->startOfMonth();
         $currentMonthEnd    = $now->copy()->endOfMonth();
-        $previousMonthStart = $now->copy()->subMonth()->startOfMonth();
-        $previousMonthEnd   = $now->copy()->subMonth()->endOfMonth();
+        $previousMonthStart = $now->copy()->subMonthNoOverflow()->startOfMonth();
+        $previousMonthEnd   = $now->copy()->subMonthNoOverflow()->endOfMonth();
 
         $currentData  = $this->aggregateMetricsByDay($currentMonthStart, $currentMonthEnd, $referrerName);
         $previousData = $this->aggregateMetricsByDay($previousMonthStart, $previousMonthEnd, $referrerName);
@@ -322,7 +322,7 @@ class StatsService
 
         return [
             'current_month'  => $now->locale('es')->monthName,
-            'previous_month' => $now->copy()->subMonth()->locale('es')->monthName,
+            'previous_month' => $now->copy()->subMonthNoOverflow()->locale('es')->monthName,
             'days'           => $daysData,
         ];
     }
@@ -414,8 +414,8 @@ class StatsService
         $now            = Carbon::now();
         $startThisMonth = $now->copy()->startOfMonth();
         $endThisMonth   = $now->copy()->endOfMonth();
-        $startLastMonth = $now->copy()->subMonth()->startOfMonth();
-        $endLastMonth   = $now->copy()->subMonth()->endOfMonth();
+        $startLastMonth = $now->copy()->subMonthNoOverflow()->startOfMonth();
+        $endLastMonth   = $now->copy()->subMonthNoOverflow()->endOfMonth();
         $startYear      = $now->copy()->startOfYear();
         $endYear        = $now->copy()->endOfYear();
 
