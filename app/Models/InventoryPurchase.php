@@ -14,6 +14,7 @@ class InventoryPurchase extends Model
         'category_id',
         'product_id',
         'item_name',
+        'distributor',
         'quantity',
         'unit_price',
         'total_price',

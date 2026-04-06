@@ -98,4 +98,9 @@ class MedicalEvaluation extends Model
     {
         return $this->belongsTo(User::class, 'canceled_by_user_id');
     }
+
+    public function inventoryUsages()
+    {
+        return $this->hasMany(InventoryUsage::class, 'medical_evaluation_id');
+    }
 }
