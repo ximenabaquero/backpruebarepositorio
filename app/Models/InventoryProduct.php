@@ -9,10 +9,14 @@ class InventoryProduct extends Model
 {
     use HasFactory;
 
+    const TYPE_INSUMO = 'insumo';
+    const TYPE_EQUIPO = 'equipo';
+
     protected $fillable = [
         'category_id',
         'name',
         'description',
+        'type',
         'unit_price',
         'stock',
         'active',

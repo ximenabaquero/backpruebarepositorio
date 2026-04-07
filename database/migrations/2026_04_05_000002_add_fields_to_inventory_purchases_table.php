@@ -6,22 +6,24 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Run the migrations.
+     */
     public function up(): void
     {
         Schema::table('inventory_purchases', function (Blueprint $table) {
-            $table->foreignId('product_id')
-                  ->nullable()
-                  ->after('category_id')
-                  ->constrained('inventory_products')
-                  ->nullOnDelete();
+            // product_id ya existe, solo agregamos distributor
+            $table->string('distributor', 200)->nullable()->after('product_id');
         });
     }
 
+    /**
+     * Reverse the migrations.
+     */
     public function down(): void
     {
         Schema::table('inventory_purchases', function (Blueprint $table) {
-            $table->dropForeign(['product_id']);
-            $table->dropColumn('product_id');
+            $table->dropColumn('distributor');
         });
     }
 };
