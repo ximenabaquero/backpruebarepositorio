@@ -9,7 +9,14 @@ class InventoryCategory extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'name', 'color'];
+    protected $fillable = [
+        'user_id', 
+        'name', 
+    ];
+
+    // ─────────────────────────────────────────────
+    // Relaciones
+    // ─────────────────────────────────────────────
 
     public function user()
     {
