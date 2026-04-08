@@ -406,6 +406,50 @@ class StatsService
     }
 
     // ─────────────────────────────────────────────
+    // REVENUE TREND — window functions MySQL 8+
+    // ─────────────────────────────────────────────
+
+    /**
+     * Ingresos mensuales del año con SMA-3 y delta mes a mes.
+     * Usa window functions de MySQL 8+ (AVG OVER, LAG OVER).
+     * Solo disponible cuando el driver es MySQL/MariaDB.
+     */
+    public function getRevenueTrend(): array
+    {
+        $year = Carbon::now()->year;
+
+        $rows = DB::select("
+            SELECT
+                date,
+                revenue,
+                AVG(revenue) OVER (
+                    ORDER BY date
+                    ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+                ) AS sma_3,
+                revenue - LAG(revenue) OVER (ORDER BY date) AS cambio_mes_a_mes
+            FROM (
+                SELECT
+                    DATE_FORMAT(p.procedure_date, '%Y-%m-01') AS date,
+                    COALESCE(SUM(p.total_amount), 0)          AS revenue
+                FROM procedures p
+                JOIN medical_evaluations me
+                    ON p.medical_evaluation_id = me.id
+                WHERE me.status = 'CONFIRMADO'
+                  AND YEAR(p.procedure_date) = :year
+                GROUP BY DATE_FORMAT(p.procedure_date, '%Y-%m-01')
+            ) monthly
+            ORDER BY date
+        ", ['year' => $year]);
+
+        return array_map(fn($row) => [
+            'date'              => $row->date,
+            'revenue'           => (float) $row->revenue,
+            'sma_3'             => $row->sma_3 !== null ? round((float) $row->sma_3, 2) : null,
+            'cambio_mes_a_mes'  => $row->cambio_mes_a_mes !== null ? (float) $row->cambio_mes_a_mes : null,
+        ], $rows);
+    }
+
+    // ─────────────────────────────────────────────
     // REFERRER SELF-SUMMARY
     // ─────────────────────────────────────────────
 

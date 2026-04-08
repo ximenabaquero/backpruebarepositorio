@@ -4,8 +4,10 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
+use App\Services\ForecastService;
 use App\Services\StatsService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
 
@@ -20,7 +22,10 @@ use Throwable;
  */
 class StatsController extends Controller
 {
-    public function __construct(private readonly StatsService $stats) {}
+    public function __construct(
+        private readonly StatsService    $stats,
+        private readonly ForecastService $forecast,
+    ) {}
 
     // ─────────────────────────────────────────────
     // ADMIN — protegidos por middleware 'admin' en api.php
@@ -87,6 +92,35 @@ class StatsController extends Controller
             return ApiResponse::success($this->stats->getMonthComparison());
         } catch (Throwable $e) {
             return ApiResponse::error('Error en comparativa mensual', debug: $e->getMessage());
+        }
+    }
+
+    /**
+     * Proyección de ingresos.
+     * Query param: periods (int, 1–12, default 3)
+     */
+    public function revenueForecast(Request $request): JsonResponse
+    {
+        $periods = (int) $request->query('periods', 3);
+        $periods = max(1, min(12, $periods));
+
+        try {
+            return ApiResponse::success($this->forecast->forecastRevenue($periods));
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al calcular proyección de ingresos', debug: $e->getMessage());
+        }
+    }
+
+    /**
+     * Tendencia mensual del año con SMA-3 y delta.
+     * Requiere MySQL 8+ (window functions).
+     */
+    public function revenueTrend(): JsonResponse
+    {
+        try {
+            return ApiResponse::success($this->stats->getRevenueTrend());
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al calcular tendencia de ingresos', debug: $e->getMessage());
         }
     }
 

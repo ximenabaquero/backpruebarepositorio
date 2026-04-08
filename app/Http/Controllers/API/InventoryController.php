@@ -296,6 +296,7 @@ class InventoryController extends Controller
             $query = InventoryUsage::with([
                 'product.category',
                 'user:id,first_name,last_name',
+                'medicalEvaluation.patient:id,first_name,last_name',
             ]);
 
             if (! $user->isAdmin()) {
@@ -323,10 +324,13 @@ class InventoryController extends Controller
     public function usagesStore(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'product_id' => 'required|exists:inventory_products,id',
-            'quantity'   => 'required|integer|min:1',
-            'usage_date' => 'required|date',
-            'notes'      => 'nullable|string',
+            'product_id'            => 'required|exists:inventory_products,id',
+            'quantity'              => 'required|integer|min:1',
+            'usage_date'            => 'required|date',
+            'status'                => 'nullable|in:con_paciente,sin_paciente',
+            'reason'                => 'nullable|string|max:500',
+            'medical_evaluation_id' => 'nullable|exists:medical_evaluations,id',
+            'notes'                 => 'nullable|string',
         ]);
 
         $data['user_id'] = $request->user()->id;
@@ -371,15 +375,25 @@ class InventoryController extends Controller
         $year  = (int) ($request->query('year')  ?? Carbon::now()->year);
         $user  = $request->user();
 
+        // Mes anterior para calcular variaciones
+        $prevDate  = Carbon::create($year, $month)->subMonthNoOverflow();
+        $prevMonth = $prevDate->month;
+        $prevYear  = $prevDate->year;
+
         try {
             $purchasesQuery = InventoryPurchase::whereMonth('purchase_date', $month)
                 ->whereYear('purchase_date', $year);
 
+            $prevPurchasesQuery = InventoryPurchase::whereMonth('purchase_date', $prevMonth)
+                ->whereYear('purchase_date', $prevYear);
+
             if (! $user->isAdmin()) {
                 $purchasesQuery->where('inventory_purchases.user_id', $user->id);
+                $prevPurchasesQuery->where('inventory_purchases.user_id', $user->id);
             }
 
             $totalExpenses = (float) $purchasesQuery->sum('total_price');
+            $prevExpenses  = (float) $prevPurchasesQuery->sum('total_price');
 
             $byCategory = $purchasesQuery->clone()
                 ->join('inventory_categories', 'inventory_purchases.category_id', '=', 'inventory_categories.id')
@@ -398,15 +412,15 @@ class InventoryController extends Controller
                 ]);
 
             $response = [
-                'month'          => $month,
-                'year'           => $year,
-                'total_expenses' => $totalExpenses,
-                'by_category'    => $byCategory,
+                'month'              => $month,
+                'year'               => $year,
+                'total_expenses'     => $totalExpenses,
+                'expenses_variation' => $this->calcVariation($totalExpenses, $prevExpenses),
+                'by_category'        => $byCategory,
             ];
 
             // Solo ADMIN ve ingresos y margen neto
             if ($user->isAdmin()) {
-                // JOIN en vez de whereHas — evita subquery EXISTS sin índice
                 $totalIncome = (float) DB::table('procedure_items')
                     ->join('procedures', 'procedure_items.procedure_id', '=', 'procedures.id')
                     ->join('medical_evaluations', 'procedures.medical_evaluation_id', '=', 'medical_evaluations.id')
@@ -415,8 +429,21 @@ class InventoryController extends Controller
                     ->whereYear('medical_evaluations.confirmed_at', $year)
                     ->sum('procedure_items.price');
 
-                $response['total_income'] = $totalIncome;
-                $response['net_profit']   = $totalIncome - $totalExpenses;
+                $prevIncome = (float) DB::table('procedure_items')
+                    ->join('procedures', 'procedure_items.procedure_id', '=', 'procedures.id')
+                    ->join('medical_evaluations', 'procedures.medical_evaluation_id', '=', 'medical_evaluations.id')
+                    ->where('medical_evaluations.status', 'CONFIRMADO')
+                    ->whereMonth('medical_evaluations.confirmed_at', $prevMonth)
+                    ->whereYear('medical_evaluations.confirmed_at', $prevYear)
+                    ->sum('procedure_items.price');
+
+                $netProfit  = $totalIncome - $totalExpenses;
+                $prevProfit = $prevIncome - $prevExpenses;
+
+                $response['total_income']     = $totalIncome;
+                $response['income_variation']  = $this->calcVariation($totalIncome, $prevIncome);
+                $response['net_profit']        = $netProfit;
+                $response['profit_variation']  = $this->calcVariation($netProfit, $prevProfit);
             }
 
             return ApiResponse::success($response);
@@ -437,5 +464,18 @@ class InventoryController extends Controller
     private function canModify(\App\Models\User $user, int $ownerId): bool
     {
         return $user->isAdmin() || $user->id === $ownerId;
+    }
+
+    /**
+     * Variación porcentual entre el valor actual y el anterior.
+     * Devuelve null si no hay base de comparación.
+     */
+    private function calcVariation(float $current, float $previous): ?float
+    {
+        if ($previous <= 0) {
+            return null;
+        }
+
+        return round((($current - $previous) / $previous) * 100, 2);
     }
 }

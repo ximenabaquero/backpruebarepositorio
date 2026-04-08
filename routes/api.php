@@ -158,6 +158,8 @@ Route::prefix('v1')->group(function () {
                 Route::get('/conversion-rate',       [StatsController::class, 'conversionRate']);
                 Route::get('/annual-comparison',     [StatsController::class, 'annualComparison']);
                 Route::get('/month-comparison',      [StatsController::class, 'monthComparison']);
+                Route::get('/revenue-forecast',      [StatsController::class, 'revenueForecast']);
+                Route::get('/revenue-trend',         [StatsController::class, 'revenueTrend']);
             });
         });
     });
