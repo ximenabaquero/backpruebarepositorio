@@ -97,31 +97,26 @@ Route::prefix('v1')->group(function () {
         // ── Inventario ────────────────────────────────────────────────────────
         Route::prefix('inventory')->group(function () {
 
-            // Lectura libre para ambos roles
+            // Lectura libre — ambos roles
             Route::get('/categories', [InventoryController::class, 'categoriesIndex']);
             Route::get('/products',   [InventoryController::class, 'productsIndex']);
-            Route::get('/summary',    [InventoryController::class, 'summary']);
 
-            // Compras — ambos roles (filtrado por rol en el controller)
-            Route::get('/purchases',         [InventoryController::class, 'purchasesIndex']);
-            Route::post('/purchases',        [InventoryController::class, 'purchasesStore']);
-            Route::put('/purchases/{id}',    [InventoryController::class, 'purchasesUpdate']);
-            Route::delete('/purchases/{id}', [InventoryController::class, 'purchasesDestroy']);
+            // Summary — la ruta es accesible para ambos roles pero el controller
+            // devuelve 403 si el usuario no es admin
+            Route::get('/summary', [InventoryController::class, 'summary']);
 
-            // Consumos — ambos roles (filtrado por rol en el controller)
-            Route::get('/usages',         [InventoryController::class, 'usagesIndex']);
-            Route::post('/usages',        [InventoryController::class, 'usagesStore']);
-            Route::delete('/usages/{id}', [InventoryController::class, 'usagesDestroy']);
+            // Compras — ambos roles (sin update/delete por ahora)
+            Route::get('/purchases',  [InventoryController::class, 'purchasesIndex']);
+            Route::post('/purchases', [InventoryController::class, 'purchasesStore']);
 
-            // Solo ADMIN gestiona categorías y productos
+            // Consumos — ambos roles (sin delete por ahora)
+            Route::get('/usages',  [InventoryController::class, 'usagesIndex']);
+            Route::post('/usages', [InventoryController::class, 'usagesStore']);
+
+            // Solo admin — gestión de categorías
             Route::middleware('admin')->group(function () {
-                Route::post('/categories',        [InventoryController::class, 'categoriesStore']);
-                Route::put('/categories/{id}',    [InventoryController::class, 'categoriesUpdate']);
-                Route::delete('/categories/{id}', [InventoryController::class, 'categoriesDestroy']);
-
-                Route::post('/products',          [InventoryController::class, 'productsStore']);
-                Route::put('/products/{id}',      [InventoryController::class, 'productsUpdate']);
-                Route::delete('/products/{id}',   [InventoryController::class, 'productsDestroy']);
+                Route::post('/categories',     [InventoryController::class, 'categoriesStore']);
+                Route::put('/categories/{id}', [InventoryController::class, 'categoriesUpdate']);
             });
         });
 
