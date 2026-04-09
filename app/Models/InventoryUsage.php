@@ -20,13 +20,16 @@ class InventoryUsage extends Model
         'status',
         'reason',
         'usage_date',
-        'notes',
     ];
 
     protected $casts = [
-        'usage_date' => 'date:Y-m-d',
+        'usage_date' => 'date',
     ];
 
+    // ─────────────────────────────────────────────
+    // Relaciones
+    // ─────────────────────────────────────────────
+    
     public function product()
     {
         return $this->belongsTo(InventoryProduct::class, 'product_id')

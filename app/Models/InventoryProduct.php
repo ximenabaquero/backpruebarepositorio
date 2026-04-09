@@ -17,16 +17,18 @@ class InventoryProduct extends Model
         'name',
         'description',
         'type',
-        'unit_price',
         'stock',
         'active',
     ];
 
     protected $casts = [
         'active'     => 'boolean',
-        'unit_price' => 'float',
         'stock'      => 'integer',
     ];
+
+    // ─────────────────────────────────────────────
+    // Relaciones
+    // ─────────────────────────────────────────────
 
     public function category()
     {
