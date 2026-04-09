@@ -27,7 +27,7 @@ WORKDIR /var/www
 COPY . .
 
 # Instalamos dependencias PHP (sin las de dev, optimizado para producción)
-RUN composer install --no-interaction --optimize-autoloader --no-dev
+RUN composer install --no-interaction --optimize-autoloader --no-dev --no-scripts
 
 # Damos permisos a Laravel sobre las carpetas que necesita escribir
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache \
