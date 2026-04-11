@@ -10,13 +10,12 @@ use Illuminate\Support\Facades\DB;
 class InventoryPurchaseService
 {
     /**
-     * Listado de compras con filtros opcionales.
+     * Listado de compras con búsqueda y filtro de categoría.
      *
-     * Filtros (todos opcionales, se combinan):
-     *   product_name     → LIKE sobre inventory_products.name
-     *   category_id      → exacto sobre inventory_products.category_id
-     *   buyer_name       → LIKE sobre users.name
-     *   distributor_name → LIKE sobre distributors.name
+     * $filters:
+     *   search      → string — busca en nombre de producto, nombre del comprador
+     *                          y nombre del distribuidor (OR, case-insensitive)
+     *   category_id → int    — filtra por categoría exacta del producto
      */
     public function listAll(array $filters = []): Collection
     {
@@ -26,27 +25,20 @@ class InventoryPurchaseService
                 'distributor:id,name',
             ])
             ->when(
-                isset($filters['product_name']),
-                fn($q) => $q->whereHas('product', fn($p) =>
-                    $p->where('name', 'like', "%{$filters['product_name']}%")
-                )
+                isset($filters['search']),
+                function ($q) use ($filters) {
+                    $term = "%{$filters['search']}%";
+                    $q->where(function ($q) use ($term) {
+                        $q->whereHas('product',     fn($p) => $p->where('name', 'like', $term))
+                          ->orWhereHas('user',       fn($u) => $u->where('name', 'like', $term))
+                          ->orWhereHas('distributor',fn($d) => $d->where('name', 'like', $term));
+                    });
+                }
             )
             ->when(
                 isset($filters['category_id']),
                 fn($q) => $q->whereHas('product', fn($p) =>
                     $p->where('category_id', $filters['category_id'])
-                )
-            )
-            ->when(
-                isset($filters['buyer_name']),
-                fn($q) => $q->whereHas('user', fn($u) =>
-                    $u->where('name', 'like', "%{$filters['buyer_name']}%")
-                )
-            )
-            ->when(
-                isset($filters['distributor_name']),
-                fn($q) => $q->whereHas('distributor', fn($d) =>
-                    $d->where('name', 'like', "%{$filters['distributor_name']}%")
                 )
             )
             ->orderByDesc('created_at')
@@ -101,22 +93,20 @@ class InventoryPurchaseService
     }
 
     // ─────────────────────────────────────────────
-    // Stats — dashboard del admin
+    // Stats — dashboard del admin (GLOBAL)
     // ─────────────────────────────────────────────
 
-    public function getTotalExpenses(?string $from = null, ?string $to = null): float
+    public function getTotalExpenses(): float
     {
-        return (float) InventoryPurchase::when($from, fn($q) => $q->whereDate('purchase_date', '>=', $from))
-            ->when($to, fn($q) => $q->whereDate('purchase_date', '<=', $to))
-            ->sum('total_price');
+        return (float) InventoryPurchase::sum('total_price');
     }
 
     /**
      * $totalIncome viene del StatsService — este método no lo calcula, solo resta.
      */
-    public function getNetProfit(float $totalIncome, ?string $from = null, ?string $to = null): float
+    public function getNetProfit(float $totalIncome): float
     {
-        return $totalIncome - $this->getTotalExpenses($from, $to);
+        return $totalIncome - $this->getTotalExpenses();
     }
 
     // ─────────────────────────────────────────────
@@ -130,7 +120,7 @@ class InventoryPurchaseService
             'name'        => $data['name'],
             'description' => $data['description'] ?? null,
             'type'        => $data['type'],
-            'stock'       => $data['type'] === InventoryProduct::TYPE_INSUMO ? 0 : null,
+            'stock'       => 0,
             'active'      => true,
         ]);
     }

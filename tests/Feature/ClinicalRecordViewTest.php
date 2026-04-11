@@ -45,16 +45,14 @@ class ClinicalRecordViewTest extends TestCase
         // Verifica que los campos requeridos por la vista están presentes
         $patient = $response->json('data.patient');
         $this->assertArrayHasKey('full_name',      $patient);
+        $this->assertArrayHasKey('first_name', $patient);
+        $this->assertArrayHasKey('last_name',  $patient);
         $this->assertArrayHasKey('document_type',  $patient);
         $this->assertArrayHasKey('cedula',         $patient);
         $this->assertArrayHasKey('cellphone',      $patient);
         $this->assertArrayHasKey('date_of_birth',  $patient);
         $this->assertArrayHasKey('age',            $patient);
         $this->assertArrayHasKey('biological_sex', $patient);
-
-        // first_name y last_name no deben viajar — el frontend usa full_name
-        $this->assertArrayNotHasKey('first_name', $patient);
-        $this->assertArrayNotHasKey('last_name',  $patient);
     }
 
     public function test_vista1_devuelve_tarjetas_de_evaluaciones(): void
