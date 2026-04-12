@@ -21,9 +21,9 @@ class InventoryPurchase extends Model
     ];
 
     protected $casts = [
-        'unit_price'    => 'float',
-        'total_price'   => 'float',
-        'purchase_date' => 'date',
+        'purchase_date' => 'date:Y-m-d',
+        'unit_price'    => 'decimal:2',
+        'total_price'   => 'decimal:2',
     ];
 
     // ─────────────────────────────────────────────

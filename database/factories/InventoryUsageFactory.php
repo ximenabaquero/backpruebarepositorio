@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\InventoryProduct;
 use App\Models\InventoryUsage;
+use App\Models\MedicalEvaluation;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -12,46 +13,49 @@ class InventoryUsageFactory extends Factory
 {
     protected $model = InventoryUsage::class;
 
+    private const REASONS = [
+        'Merma / daño',
+        'Prueba de protocolo',
+        'Uso general de clínica',
+        'Mantenimiento de equipo',
+        'Capacitación interna',
+    ];
+
     public function definition(): array
     {
         return [
-            'user_id'    => User::factory()->remitente(),
-            // Factory lazy con stock suficiente — evita fallar por stock = 0
-            'product_id' => InventoryProduct::factory()->conStock(50),
-            'quantity'   => fake()->numberBetween(1, 5),
-            'usage_date' => fake()->dateTimeBetween(
+            'user_id'               => User::factory()->remitente(),
+            'product_id'            => InventoryProduct::factory()->insumo()->conStock(50),
+            'medical_evaluation_id' => null,
+            'quantity'              => fake()->numberBetween(1, 5),
+            'status'                => InventoryUsage::STATUS_SIN_PACIENTE,
+            'reason'                => fake()->randomElement(self::REASONS),
+            'usage_date'            => fake()->dateTimeBetween(
                 Carbon::now()->startOfYear(),
                 Carbon::now()
             )->format('Y-m-d'),
-            'notes' => fake()->optional(0.5)->sentence(),
         ];
     }
 
-    // ─────────────────────────────────────────────
-    // Estados
-    // ─────────────────────────────────────────────
-
-    /**
-     * Consumo vinculado a un producto específico.
-     */
-    public function deProducto(InventoryProduct $product): static
+    public function conPaciente(MedicalEvaluation $evaluation = null): static
     {
-        return $this->state(fn() => ['product_id' => $product->id]);
-    }
-
-    /**
-     * Consumo en un mes específico — útil para tests de stats.
-     */
-    public function enMes(int $month, int $year = null): static
-    {
-        return $this->state(function () use ($month, $year) {
-            $year  = $year ?? Carbon::now()->year;
-            $start = Carbon::create($year, $month, 1)->startOfMonth();
-            $end   = Carbon::create($year, $month, 1)->endOfMonth();
+        return $this->state(function () use ($evaluation) {
+            $eval = $evaluation ?? MedicalEvaluation::factory()->confirmado()->create();
 
             return [
-                'usage_date' => fake()->dateTimeBetween($start, $end)->format('Y-m-d'),
+                'medical_evaluation_id' => $eval->id,
+                'status'                => InventoryUsage::STATUS_CON_PACIENTE,
+                'reason'                => null,
             ];
         });
+    }
+
+    public function sinPaciente(string $reason = null): static
+    {
+        return $this->state(fn() => [
+            'medical_evaluation_id' => null,
+            'status'                => InventoryUsage::STATUS_SIN_PACIENTE,
+            'reason'                => $reason ?? fake()->randomElement(self::REASONS),
+        ]);
     }
 }

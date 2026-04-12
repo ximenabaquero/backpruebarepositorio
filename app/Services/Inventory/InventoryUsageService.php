@@ -12,13 +12,11 @@ use Illuminate\Support\Facades\DB;
 class InventoryUsageService
 {
     /**
-     * Listado de consumos con filtros opcionales.
+     * Listado de consumos con búsqueda y filtro de categoría.
      *
-     * Filtros (todos opcionales, se combinan):
-     *   product_name → LIKE sobre inventory_products.name
-     *   category_id  → exacto sobre inventory_products.category_id
-     *   user_name    → LIKE sobre users.name
-     *   status       → 'con_paciente' | 'sin_paciente'
+     * $filters:
+     *   search      → string — busca en nombre de producto y nombre de quien registró (OR)
+     *   category_id → int    — filtra por categoría exacta del producto
      */
     public function listAll(array $filters = []): Collection
     {
@@ -28,26 +26,20 @@ class InventoryUsageService
                 'medicalEvaluation:id',
             ])
             ->when(
-                isset($filters['product_name']),
-                fn($q) => $q->whereHas('product', fn($p) =>
-                    $p->where('name', 'like', "%{$filters['product_name']}%")
-                )
+                isset($filters['search']),
+                function ($q) use ($filters) {
+                    $term = "%{$filters['search']}%";
+                    $q->where(function ($q) use ($term) {
+                        $q->whereHas('product', fn($p) => $p->where('name', 'like', $term))
+                          ->orWhereHas('user',   fn($u) => $u->where('name', 'like', $term));
+                    });
+                }
             )
             ->when(
                 isset($filters['category_id']),
                 fn($q) => $q->whereHas('product', fn($p) =>
                     $p->where('category_id', $filters['category_id'])
                 )
-            )
-            ->when(
-                isset($filters['user_name']),
-                fn($q) => $q->whereHas('user', fn($u) =>
-                    $u->where('name', 'like', "%{$filters['user_name']}%")
-                )
-            )
-            ->when(
-                isset($filters['status']),
-                fn($q) => $q->where('status', $filters['status'])
             )
             ->orderByDesc('created_at')
             ->get();
@@ -59,6 +51,8 @@ class InventoryUsageService
      *
      * usage_date → automático con now().
      * $items = [['product_id' => int, 'quantity' => int], ...]
+     *
+     * Retorna Eloquent\Collection para consistencia con el tipo declarado.
      */
     public function registerClinical(
         int $userId,
@@ -67,26 +61,33 @@ class InventoryUsageService
         ?string $reason = null
     ): Collection {
         return DB::transaction(function () use ($userId, $medicalEvaluationId, $items, $reason) {
-            return collect($items)
-                ->filter(fn($item) => $item['quantity'] > 0)
-                ->map(function ($item) use ($userId, $medicalEvaluationId, $reason) {
-                    $product = InventoryProduct::lockForUpdate()->findOrFail($item['product_id']);
+            $usages = [];
 
-                    $this->guardEquipo($product);
-                    $this->guardStock($product, $item['quantity']);
+            foreach ($items as $item) {
+                if ($item['quantity'] <= 0) {
+                    continue;
+                }
 
-                    $product->decrement('stock', $item['quantity']);
+                $product = InventoryProduct::lockForUpdate()->findOrFail($item['product_id']);
 
-                    return InventoryUsage::create([
-                        'product_id'            => $product->id,
-                        'user_id'               => $userId,
-                        'medical_evaluation_id' => $medicalEvaluationId,
-                        'quantity'              => $item['quantity'],
-                        'status'                => InventoryUsage::STATUS_CON_PACIENTE,
-                        'reason'                => $reason,
-                        'usage_date'            => now()->toDateString(),
-                    ])->load('product.category', 'user:id,name');
-                });
+                $this->guardEquipo($product);
+                $this->guardStock($product, $item['quantity']);
+
+                $product->decrement('stock', $item['quantity']);
+
+                $usages[] = InventoryUsage::create([
+                    'product_id'            => $product->id,
+                    'user_id'               => $userId,
+                    'medical_evaluation_id' => $medicalEvaluationId,
+                    'quantity'              => $item['quantity'],
+                    'status'                => InventoryUsage::STATUS_CON_PACIENTE,
+                    'reason'                => $reason,
+                    'usage_date'            => now()->toDateString(),
+                ])->load('product.category', 'user:id,name');
+            }
+
+            // Retorna Eloquent Collection — compatible con el tipo declarado
+            return InventoryUsage::whereIn('id', collect($usages)->pluck('id'))->get();
         });
     }
 
@@ -99,26 +100,35 @@ class InventoryUsageService
     public function registerGeneral(int $userId, string $reason, array $items): Collection
     {
         return DB::transaction(function () use ($userId, $reason, $items) {
-            return collect($items)
-                ->filter(fn($item) => $item['quantity'] > 0)
-                ->map(function ($item) use ($userId, $reason) {
-                    $product = InventoryProduct::lockForUpdate()->findOrFail($item['product_id']);
+            $usages = [];
 
-                    $this->guardEquipo($product);
-                    $this->guardStock($product, $item['quantity']);
+            foreach ($items as $item) {
+                if ($item['quantity'] <= 0) {
+                    continue;
+                }
 
-                    $product->decrement('stock', $item['quantity']);
+                $product = InventoryProduct::lockForUpdate()->findOrFail($item['product_id']);
 
-                    return InventoryUsage::create([
-                        'product_id'            => $product->id,
-                        'user_id'               => $userId,
-                        'medical_evaluation_id' => null,
-                        'quantity'              => $item['quantity'],
-                        'status'                => InventoryUsage::STATUS_SIN_PACIENTE,
-                        'reason'                => $reason,
-                        'usage_date'            => now()->toDateString(),
-                    ])->load('product.category', 'user:id,name');
-                });
+                $this->guardEquipo($product);
+                $this->guardStock($product, $item['quantity']);
+
+                $product->decrement('stock', $item['quantity']);
+
+                $usages[] = InventoryUsage::create([
+                    'product_id'            => $product->id,
+                    'user_id'               => $userId,
+                    'medical_evaluation_id' => null,
+                    'quantity'              => $item['quantity'],
+                    'status'                => InventoryUsage::STATUS_SIN_PACIENTE,
+                    'reason'                => $reason,
+                    'usage_date'            => now()->toDateString(),
+                ]);
+            }
+
+            // Retorna Eloquent Collection — compatible con el tipo declarado
+            return InventoryUsage::with('product.category', 'user:id,name')
+                ->whereIn('id', collect($usages)->pluck('id'))
+                ->get();
         });
     }
 

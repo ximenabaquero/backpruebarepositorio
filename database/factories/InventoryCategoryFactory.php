@@ -12,13 +12,13 @@ class InventoryCategoryFactory extends Factory
 
     // Categorías realistas para una clínica estética
     private const CATEGORIES = [
-        ['name' => 'Insumos médicos',      'color' => '#3B82F6'],
-        ['name' => 'Productos cosméticos', 'color' => '#EC4899'],
-        ['name' => 'Equipos y herramientas','color' => '#8B5CF6'],
-        ['name' => 'Medicamentos',         'color' => '#10B981'],
-        ['name' => 'Materiales de oficina','color' => '#F59E0B'],
-        ['name' => 'Aseo y limpieza',      'color' => '#6366F1'],
-        ['name' => 'Ropa y accesorios',    'color' => '#EF4444'],
+        ['name' => 'Insumos médicos'],
+        ['name' => 'Productos cosméticos'],
+        ['name' => 'Equipos y herramientas'],
+        ['name' => 'Medicamentos'],
+        ['name' => 'Materiales de oficina'],
+        ['name' => 'Aseo y limpieza'],
+        ['name' => 'Ropa y accesorios'],
     ];
 
     public function definition(): array
@@ -28,7 +28,6 @@ class InventoryCategoryFactory extends Factory
         return [
             'user_id' => User::factory()->admin(),
             'name'    => $category['name'] . ' ' . fake()->unique()->numberBetween(1, 99),
-            'color'   => $category['color'],
         ];
     }
 

@@ -9,6 +9,7 @@ use App\Http\Requests\Inventory\StoreCategoryRequest;
 use App\Http\Requests\Inventory\StorePurchaseRequest;
 use App\Http\Requests\Inventory\StoreUsageRequest;
 use App\Http\Requests\Inventory\UpdateCategoryRequest;
+use App\Http\Responses\ApiResponse;
 use App\Models\InventoryCategory;
 use App\Models\InventoryProduct;
 use App\Models\InventoryUsage;
@@ -34,7 +35,7 @@ class InventoryController extends Controller
 
     public function categoriesIndex(): JsonResponse
     {
-        return response()->json($this->categoryService->all());
+        return ApiResponse::success($this->categoryService->all());
     }
 
     /** Solo admin — garantizado por middleware en rutas */
@@ -45,7 +46,7 @@ class InventoryController extends Controller
             name: $request->validated('name'),
         );
 
-        return response()->json($category, 201);
+        return ApiResponse::success($category, 201);
     }
 
     /** Solo admin — garantizado por middleware en rutas */
@@ -53,7 +54,7 @@ class InventoryController extends Controller
     {
         $category = InventoryCategory::findOrFail($id);
 
-        return response()->json(
+        return ApiResponse::success(
             $this->categoryService->update($category, $request->validated('name'))
         );
     }
@@ -69,7 +70,7 @@ class InventoryController extends Controller
             ->orderBy('name')
             ->get();
 
-        return response()->json($products);
+        return ApiResponse::success($products);
     }
 
     // =========================================================================
@@ -80,16 +81,14 @@ class InventoryController extends Controller
      * Ambos roles pueden ver el listado de compras.
      *
      * Query params opcionales (combinables):
-     *   ?product_name=faja
-     *   ?category_id=2
-     *   ?buyer_name=laura
-     *   ?distributor_name=medisupply
+     *   ?search=texto      — busca en nombre de producto, comprador y distribuidor (OR)
+     *   ?category_id=2     — filtra por categoría del producto
      */
     public function purchasesIndex(Request $request): JsonResponse
     {
-        $filters = $request->only(['product_name', 'category_id', 'buyer_name', 'distributor_name']);
+        $filters = $request->only(['search', 'category_id']);
 
-        return response()->json($this->purchaseService->listAll($filters));
+        return ApiResponse::success($this->purchaseService->listAll($filters));
     }
 
     /**
@@ -101,9 +100,7 @@ class InventoryController extends Controller
         $data            = $request->validated();
         $data['user_id'] = auth()->id();
 
-        $purchase = $this->purchaseService->register($data);
-
-        return response()->json($purchase, 201);
+        return ApiResponse::success($this->purchaseService->register($data), 201);
     }
 
     // =========================================================================
@@ -114,16 +111,14 @@ class InventoryController extends Controller
      * Ambos roles pueden ver el listado de consumos.
      *
      * Query params opcionales (combinables):
-     *   ?product_name=faja
-     *   ?category_id=2
-     *   ?user_name=laura
-     *   ?status=con_paciente|sin_paciente
+     *   ?search=texto      — busca en nombre de producto y nombre de quien registró (OR)
+     *   ?category_id=2     — filtra por categoría del producto
      */
     public function usagesIndex(Request $request): JsonResponse
     {
-        $filters = $request->only(['product_name', 'category_id', 'user_name', 'status']);
+        $filters = $request->only(['search', 'category_id']);
 
-        return response()->json($this->usageService->listAll($filters));
+        return ApiResponse::success($this->usageService->listAll($filters));
     }
 
     /**
@@ -133,8 +128,7 @@ class InventoryController extends Controller
      *   - Si status = con_paciente → medical_evaluation_id requerido y CONFIRMADO
      *   - Si status = sin_paciente → reason requerido
      *
-     * Si la cantidad solicitada supera el stock disponible se devuelve 422
-     * con un mensaje claro indicando el producto y los valores en conflicto.
+     * Si la cantidad supera el stock disponible → 422 con mensaje del producto afectado.
      */
     public function usagesStore(StoreUsageRequest $request): JsonResponse
     {
@@ -154,53 +148,29 @@ class InventoryController extends Controller
                     reason: $data['reason'],
                     items:  $data['items'],
                 );
-        } catch (InsufficientStockException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-                'error'   => 'insufficient_stock',
-            ], 422);
-        } catch (EquipoHasNoStockException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-                'error'   => 'equipo_no_consumible',
-            ], 422);
+        } catch (InsufficientStockException | EquipoHasNoStockException $e) {
+            return ApiResponse::error($e->getMessage(), 422);
         }
 
-        return response()->json($usages, 201);
+        return ApiResponse::success($usages, 201);
     }
 
     // =========================================================================
-    // SUMMARY — solo admin
+    // SUMMARY — solo admin (garantizado por middleware en rutas)
     // =========================================================================
 
     /**
-     * El remitente no tiene acceso a ningún dato financiero.
-     * Solo el admin puede ver ingresos, gastos y utilidad.
-     *
-     * Query params opcionales para filtrar gastos por período:
-     *   ?from=2025-01-01&to=2025-03-31
+     * Ingresos totales, gastos totales y utilidad neta.
      */
-    public function summary(Request $request): JsonResponse
+    public function summary(): JsonResponse
     {
-        if (! auth()->user()->isAdmin()) {
-            return response()->json(['message' => 'No tenés permisos para ver esta información.'], 403);
-        }
-
-        $request->validate([
-            'from' => ['nullable', 'date'],
-            'to'   => ['nullable', 'date', 'after_or_equal:from'],
-        ]);
-
-        $from = $request->query('from');
-        $to   = $request->query('to');
-
         $totalIncome   = $this->statsService->getSummary()['total_income'];
-        $totalExpenses = $this->purchaseService->getTotalExpenses($from, $to);
+        $totalExpenses = $this->purchaseService->getTotalExpenses();
 
-        return response()->json([
+        return ApiResponse::success([
             'total_income'   => $totalIncome,
             'total_expenses' => $totalExpenses,
-            'net_profit'     => $this->purchaseService->getNetProfit($totalIncome, $from, $to),
+            'net_profit'     => $this->purchaseService->getNetProfit($totalIncome),
         ]);
     }
 }
