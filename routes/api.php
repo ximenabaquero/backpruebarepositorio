@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\API\ClinicalImageController;
 use App\Http\Controllers\API\ClinicalRecordController;
 use App\Http\Controllers\API\InventoryController;
+use App\Http\Controllers\API\DistributorController;
 use App\Http\Controllers\API\MedicalEvaluationController;
 use App\Http\Controllers\API\PatientController;
 use App\Http\Controllers\API\ProcedureController;
@@ -101,22 +102,24 @@ Route::prefix('v1')->group(function () {
             Route::get('/categories', [InventoryController::class, 'categoriesIndex']);
             Route::get('/products',   [InventoryController::class, 'productsIndex']);
 
-            // Summary — la ruta es accesible para ambos roles pero el controller
-            // devuelve 403 si el usuario no es admin
-            Route::get('/summary', [InventoryController::class, 'summary']);
+            // Ver distribuidores
+            Route::get('/distributors', [DistributorController::class, 'index']);
 
-            // Compras — ambos roles (sin update/delete por ahora)
+            // Compras — ambos roles
             Route::get('/purchases',  [InventoryController::class, 'purchasesIndex']);
             Route::post('/purchases', [InventoryController::class, 'purchasesStore']);
 
-            // Consumos — ambos roles (sin delete por ahora)
+            // Consumos — ambos roles
             Route::get('/usages',  [InventoryController::class, 'usagesIndex']);
             Route::post('/usages', [InventoryController::class, 'usagesStore']);
 
-            // Solo admin — gestión de categorías
+            // Solo admin
             Route::middleware('admin')->group(function () {
                 Route::post('/categories',     [InventoryController::class, 'categoriesStore']);
                 Route::put('/categories/{id}', [InventoryController::class, 'categoriesUpdate']);
+
+                // Summary financiero — ingresos, gastos y utilidad
+                Route::get('/summary', [InventoryController::class, 'summary']);
             });
         });
 
