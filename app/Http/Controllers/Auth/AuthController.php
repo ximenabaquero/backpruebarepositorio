@@ -53,6 +53,18 @@ class AuthController extends Controller
         }
     }
 
+    // Confirmar contraseña del usuario autenticado (para desbloquear vistas sensibles)
+    public function confirmPassword(Request $request)
+    {
+        $request->validate(['password' => 'required|string']);
+
+        if (!Hash::check($request->password, $request->user()->password)) {
+            return response()->json(['message' => 'Contraseña incorrecta.'], 401);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
     // Log out
     public function logout(Request $request)
     {

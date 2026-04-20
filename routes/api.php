@@ -53,8 +53,9 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         // ── Auth ──────────────────────────────────────────────────────────────
-        Route::get('/me',      [AuthController::class, 'me']);
-        Route::post('/logout', [AuthController::class, 'logout']);
+        Route::get('/me',                    [AuthController::class, 'me']);
+        Route::post('/logout',               [AuthController::class, 'logout']);
+        Route::post('/confirm-password',     [AuthController::class, 'confirmPassword']);
 
         // ── Pacientes ─────────────────────────────────────────────────────────
         // show() eliminado — Vista 1 devuelve paciente + evaluaciones juntos
