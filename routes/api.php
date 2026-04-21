@@ -114,6 +114,13 @@ Route::prefix('v1')->group(function () {
             Route::get('/usages',  [InventoryController::class, 'usagesIndex']);
             Route::post('/usages', [InventoryController::class, 'usagesStore']);
 
+            // Reportes — ambos roles
+            Route::prefix('reports')->group(function () {
+                Route::get('/spend-by-category',       [InventoryController::class, 'spendByCategory']);
+                Route::get('/spend-by-distributor',    [InventoryController::class, 'spendByDistributor']);
+                Route::get('/price-history/{productId}', [InventoryController::class, 'priceHistory']);
+            });
+
             // Solo admin
             Route::middleware('admin')->group(function () {
                 Route::post('/categories',     [InventoryController::class, 'categoriesStore']);
