@@ -9,6 +9,7 @@ use App\Http\Requests\Inventory\StoreCategoryRequest;
 use App\Http\Requests\Inventory\StorePurchaseRequest;
 use App\Http\Requests\Inventory\StoreUsageRequest;
 use App\Http\Requests\Inventory\UpdateCategoryRequest;
+use App\Http\Requests\Inventory\StoreProductRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\InventoryCategory;
 use App\Models\InventoryProduct;
@@ -62,7 +63,7 @@ class InventoryController extends Controller
     }
 
     // =========================================================================
-    // PRODUCTOS (solo lectura — se crean al registrar una compra)
+    // PRODUCTOS
     // =========================================================================
 
     public function productsIndex(): JsonResponse
@@ -73,6 +74,29 @@ class InventoryController extends Controller
             ->get();
 
         return ApiResponse::success($products);
+    }
+
+    /**
+     * Crea un producto nuevo con stock inicial 0.
+     * Solo admin — garantizado por middleware en rutas.
+     */
+    public function productsStore(StoreProductRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        $product = InventoryProduct::create([
+            'name'        => $data['name'],
+            'category_id' => $data['category_id'],
+            'type'        => $data['type'],
+            'description' => $data['description'] ?? null,
+            'stock'       => 0,
+            'unit_price'  => 0,
+            'active'      => true,
+        ]);
+
+        $product->load('category');
+
+        return ApiResponse::success($product, 201);
     }
 
     // =========================================================================
@@ -103,6 +127,25 @@ class InventoryController extends Controller
         $data['user_id'] = Auth::id();
 
         return ApiResponse::success($this->purchaseService->register($data), 201);
+    }
+
+    /**
+     * Obtiene la última compra de un producto específico
+     * Útil para autocompletar precio y distribuidor en nuevas compras
+     */
+    public function lastPurchase(int $productId): JsonResponse
+    {
+        $lastPurchase = DB::table('inventory_purchases')
+            ->select('unit_price', 'distributor_id', 'purchase_date')
+            ->where('product_id', $productId)
+            ->orderBy('purchase_date', 'desc')
+            ->first();
+
+        if (!$lastPurchase) {
+            return ApiResponse::success(null);
+        }
+
+        return ApiResponse::success($lastPurchase);
     }
 
     // =========================================================================

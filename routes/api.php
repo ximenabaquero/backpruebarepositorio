@@ -109,6 +109,7 @@ Route::prefix('v1')->group(function () {
             // Compras — ambos roles
             Route::get('/purchases',  [InventoryController::class, 'purchasesIndex']);
             Route::post('/purchases', [InventoryController::class, 'purchasesStore']);
+            Route::get('/purchases/last/{productId}', [InventoryController::class, 'lastPurchase']);
 
             // Consumos — ambos roles
             Route::get('/usages',  [InventoryController::class, 'usagesIndex']);
@@ -125,6 +126,8 @@ Route::prefix('v1')->group(function () {
             Route::middleware('admin')->group(function () {
                 Route::post('/categories',     [InventoryController::class, 'categoriesStore']);
                 Route::put('/categories/{id}', [InventoryController::class, 'categoriesUpdate']);
+
+                Route::post('/products', [InventoryController::class, 'productsStore']);
 
                 // Summary financiero — ingresos, gastos y utilidad
                 Route::get('/summary', [InventoryController::class, 'summary']);
