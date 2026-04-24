@@ -86,6 +86,7 @@ class InventoryPurchaseService
             // Los equipos son gasto único, no afectan stock
             if ($product->type === InventoryProduct::TYPE_INSUMO) {
                 $product->increment('stock', $data['quantity']);
+                $product->update(['unit_price' => $data['unit_price']]);
             }
 
             return $purchase->load(['product.category', 'user:id,name', 'distributor:id,name']);
