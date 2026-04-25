@@ -26,3 +26,5 @@ Formato: `[versión] YYYY-MM-DD — descripción`
 <!-- Agregar nuevas entradas arriba de esta línea -->
 <!-- Formato: ## [x.x.x] YYYY-MM-DD — título corto -->
 <!-- Secciones: Agregado | Cambiado | Corregido | Eliminado -->
+
+para cargar docker ->

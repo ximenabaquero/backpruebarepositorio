@@ -54,10 +54,11 @@ return new class extends Migration
             
             // Revertir category_id
             $table->foreignId('category_id')
+                  ->nullable()
                   ->constrained('inventory_categories')
-                  ->cascadeOnDelete();
+                  ->nullOnDelete();
 
-            $table->string('item_name', 200);
+            $table->string('item_name', 200)->nullable();
         });
     }
 };

@@ -53,8 +53,9 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         // ── Auth ──────────────────────────────────────────────────────────────
-        Route::get('/me',      [AuthController::class, 'me']);
-        Route::post('/logout', [AuthController::class, 'logout']);
+        Route::get('/me',                    [AuthController::class, 'me']);
+        Route::post('/logout',               [AuthController::class, 'logout']);
+        Route::post('/confirm-password',     [AuthController::class, 'confirmPassword']);
 
         // ── Pacientes ─────────────────────────────────────────────────────────
         // show() eliminado — Vista 1 devuelve paciente + evaluaciones juntos
@@ -108,15 +109,25 @@ Route::prefix('v1')->group(function () {
             // Compras — ambos roles
             Route::get('/purchases',  [InventoryController::class, 'purchasesIndex']);
             Route::post('/purchases', [InventoryController::class, 'purchasesStore']);
+            Route::get('/purchases/last/{productId}', [InventoryController::class, 'lastPurchase']);
 
             // Consumos — ambos roles
             Route::get('/usages',  [InventoryController::class, 'usagesIndex']);
             Route::post('/usages', [InventoryController::class, 'usagesStore']);
 
+            // Reportes — ambos roles
+            Route::prefix('reports')->group(function () {
+                Route::get('/spend-by-category',       [InventoryController::class, 'spendByCategory']);
+                Route::get('/spend-by-distributor',    [InventoryController::class, 'spendByDistributor']);
+                Route::get('/price-history/{productId}', [InventoryController::class, 'priceHistory']);
+            });
+
             // Solo admin
             Route::middleware('admin')->group(function () {
                 Route::post('/categories',     [InventoryController::class, 'categoriesStore']);
                 Route::put('/categories/{id}', [InventoryController::class, 'categoriesUpdate']);
+
+                Route::post('/products', [InventoryController::class, 'productsStore']);
 
                 // Summary financiero — ingresos, gastos y utilidad
                 Route::get('/summary', [InventoryController::class, 'summary']);
@@ -156,6 +167,8 @@ Route::prefix('v1')->group(function () {
                 Route::get('/conversion-rate',       [StatsController::class, 'conversionRate']);
                 Route::get('/annual-comparison',     [StatsController::class, 'annualComparison']);
                 Route::get('/month-comparison',      [StatsController::class, 'monthComparison']);
+                Route::get('/revenue-forecast',      [StatsController::class, 'revenueForecast']);
+                Route::get('/revenue-trend',         [StatsController::class, 'revenueTrend']);
             });
         });
     });

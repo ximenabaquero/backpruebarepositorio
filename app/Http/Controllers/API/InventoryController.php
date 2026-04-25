@@ -9,6 +9,7 @@ use App\Http\Requests\Inventory\StoreCategoryRequest;
 use App\Http\Requests\Inventory\StorePurchaseRequest;
 use App\Http\Requests\Inventory\StoreUsageRequest;
 use App\Http\Requests\Inventory\UpdateCategoryRequest;
+use App\Http\Requests\Inventory\StoreProductRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\InventoryCategory;
 use App\Models\InventoryProduct;
@@ -19,6 +20,8 @@ use App\Services\Inventory\InventoryUsageService;
 use App\Services\StatsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class InventoryController extends Controller
 {
@@ -42,7 +45,7 @@ class InventoryController extends Controller
     public function categoriesStore(StoreCategoryRequest $request): JsonResponse
     {
         $category = $this->categoryService->create(
-            adminId: auth()->id(),
+            adminId: Auth::id(),
             name: $request->validated('name'),
         );
 
@@ -60,7 +63,7 @@ class InventoryController extends Controller
     }
 
     // =========================================================================
-    // PRODUCTOS (solo lectura — se crean al registrar una compra)
+    // PRODUCTOS
     // =========================================================================
 
     public function productsIndex(): JsonResponse
@@ -71,6 +74,29 @@ class InventoryController extends Controller
             ->get();
 
         return ApiResponse::success($products);
+    }
+
+    /**
+     * Crea un producto nuevo con stock inicial 0.
+     * Solo admin — garantizado por middleware en rutas.
+     */
+    public function productsStore(StoreProductRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        $product = InventoryProduct::create([
+            'name'        => $data['name'],
+            'category_id' => $data['category_id'],
+            'type'        => $data['type'],
+            'description' => $data['description'] ?? null,
+            'stock'       => 0,
+            'unit_price'  => 0,
+            'active'      => true,
+        ]);
+
+        $product->load('category');
+
+        return ApiResponse::success($product, 201);
     }
 
     // =========================================================================
@@ -98,9 +124,28 @@ class InventoryController extends Controller
     public function purchasesStore(StorePurchaseRequest $request): JsonResponse
     {
         $data            = $request->validated();
-        $data['user_id'] = auth()->id();
+        $data['user_id'] = Auth::id();
 
         return ApiResponse::success($this->purchaseService->register($data), 201);
+    }
+
+    /**
+     * Obtiene la última compra de un producto específico
+     * Útil para autocompletar precio y distribuidor en nuevas compras
+     */
+    public function lastPurchase(int $productId): JsonResponse
+    {
+        $lastPurchase = DB::table('inventory_purchases')
+            ->select('unit_price', 'distributor_id', 'purchase_date')
+            ->where('product_id', $productId)
+            ->orderBy('purchase_date', 'desc')
+            ->first();
+
+        if (!$lastPurchase) {
+            return ApiResponse::success(null);
+        }
+
+        return ApiResponse::success($lastPurchase);
     }
 
     // =========================================================================
@@ -133,7 +178,7 @@ class InventoryController extends Controller
     public function usagesStore(StoreUsageRequest $request): JsonResponse
     {
         $data   = $request->validated();
-        $userId = auth()->id();
+        $userId = Auth::id();
 
         try {
             $usages = $data['status'] === InventoryUsage::STATUS_CON_PACIENTE
@@ -172,5 +217,103 @@ class InventoryController extends Controller
             'total_expenses' => $totalExpenses,
             'net_profit'     => $this->purchaseService->getNetProfit($totalIncome),
         ]);
+    }
+
+    // =========================================================================
+    // REPORTES
+    // =========================================================================
+
+    /**
+     * Gasto por categoría en un período específico.
+     *
+     * Query params opcionales:
+     *   ?month=4           — filtra por mes (1-12)
+     *   ?year=2026         — filtra por año
+     */
+    public function spendByCategory(Request $request): JsonResponse
+    {
+        $month = $request->query('month');
+        $year  = $request->query('year');
+
+        $query = DB::table('inventory_purchases as ip')
+            ->join('inventory_products as prod', 'ip.product_id', '=', 'prod.id')
+            ->join('inventory_categories as ic', 'prod.category_id', '=', 'ic.id')
+            ->select(
+                'ic.id as category_id',
+                'ic.name as category_name',
+                DB::raw('SUM(ip.total_price) as amount'),
+                DB::raw('COUNT(ip.id) as count')
+            );
+
+        if ($month) {
+            $query->whereMonth('ip.purchase_date', $month);
+        }
+        if ($year) {
+            $query->whereYear('ip.purchase_date', $year);
+        }
+
+        $results = $query
+            ->groupBy('ic.id', 'ic.name')
+            ->orderByDesc('amount')
+            ->get();
+
+        return ApiResponse::success($results);
+    }
+
+    /**
+     * Gasto por distribuidor en un período específico.
+     *
+     * Query params opcionales:
+     *   ?month=4           — filtra por mes (1-12)
+     *   ?year=2026         — filtra por año
+     */
+    public function spendByDistributor(Request $request): JsonResponse
+    {
+        $month = $request->query('month');
+        $year  = $request->query('year');
+
+        $query = DB::table('inventory_purchases as ip')
+            ->leftJoin('distributors as d', 'ip.distributor_id', '=', 'd.id')
+            ->select(
+                'd.id as distributor_id',
+                DB::raw("COALESCE(d.name, 'Sin distribuidor') as distributor_name"),
+                DB::raw('SUM(ip.total_price) as amount'),
+                DB::raw('COUNT(ip.id) as count')
+            );
+
+        if ($month) {
+            $query->whereMonth('ip.purchase_date', $month);
+        }
+        if ($year) {
+            $query->whereYear('ip.purchase_date', $year);
+        }
+
+        $results = $query
+            ->groupBy('d.id', 'd.name')
+            ->orderByDesc('amount')
+            ->get();
+
+        return ApiResponse::success($results);
+    }
+
+    /**
+     * Histórico de precios de un producto.
+     *
+     * Retorna las últimas 12 compras del producto ordenadas por fecha.
+     */
+    public function priceHistory(int $productId): JsonResponse
+    {
+        $history = DB::table('inventory_purchases')
+            ->select(
+                DB::raw('DATE(purchase_date) as date'),
+                'unit_price as price',
+                'id as purchase_id'
+            )
+            ->where('product_id', $productId)
+            ->orderBy('purchase_date', 'asc')
+            ->limit(12)
+            ->get();
+
+        return ApiResponse::success($history);
     }
 }
