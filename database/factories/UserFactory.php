@@ -12,14 +12,15 @@ class UserFactory extends Factory
 
     public function definition(): array
     {
+        $faker = fake();
         return [
-            'first_name' => $this->faker->firstName(),
-            'last_name'  => $this->faker->lastName(),
-            'cellphone'  => $this->faker->numerify('##########'),
+            'first_name' => $faker->firstName(),
+            'last_name'  => $faker->lastName(),
+            'cellphone'  => $faker->numerify('##########'),
             'brand_name' => config('app.brand_name'),
             'brand_slug' => config('app.brand_slug'),
-            'name'       => $this->faker->unique()->userName(),
-            'email'      => $this->faker->unique()->safeEmail(),
+            'name'       => $faker->unique()->userName(),
+            'email'      => $faker->unique()->safeEmail(),
             'password'   => Hash::make('password'),
             // role y status se asignan con forceFill porque no están
             // en $fillable — son campos sensibles protegidos contra
