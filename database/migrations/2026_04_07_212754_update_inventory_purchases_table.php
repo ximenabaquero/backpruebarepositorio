@@ -22,13 +22,20 @@ return new class extends Migration
             }
 
             // 2. Ajustamos precisión de precios a (10,2)
-            $table->decimal('unit_price', 10, 2)->change();
-            $table->decimal('total_price', 10, 2)->change();
+            if (Schema::hasColumn('inventory_purchases', 'unit_price')) {
+                $table->decimal('unit_price', 10, 2)->change();
+            }
+            if (Schema::hasColumn('inventory_purchases', 'total_price')) {
+                $table->decimal('total_price', 10, 2)->change();
+            }
 
             // 3. BORRAR CATEGORY_ID de compras
-            // Primero la relación, luego la columna
             if (Schema::hasColumn('inventory_purchases', 'category_id')) {
-                $table->dropForeign(['category_id']); 
+                try {
+                    $table->dropForeign(['category_id']); 
+                } catch (\Exception $e) {
+                    // Foreign key podría no existir
+                }
                 $table->dropColumn('category_id');
             }
 
