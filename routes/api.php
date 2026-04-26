@@ -169,6 +169,10 @@ Route::prefix('v1')->group(function () {
                 Route::get('/month-comparison',      [StatsController::class, 'monthComparison']);
                 Route::get('/revenue-forecast',      [StatsController::class, 'revenueForecast']);
                 Route::get('/revenue-trend',         [StatsController::class, 'revenueTrend']);
+                Route::get('/patients-monthly',      [StatsController::class, 'patientsMonthly']);
+                Route::get('/income-by-procedure',   [StatsController::class, 'incomeByProcedure']);
+                Route::get('/income-monthly',        [StatsController::class, 'incomeMonthly']);
+                Route::get('/income-weekly',         [StatsController::class, 'incomeWeekly']);
             });
         });
     });

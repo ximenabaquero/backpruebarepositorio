@@ -450,6 +450,119 @@ class StatsService
     }
 
     // ─────────────────────────────────────────────
+    // PATIENTS MONTHLY — últimos 12 meses
+    // ─────────────────────────────────────────────
+
+    /**
+     * Pacientes nuevos (primera evaluación CONFIRMADA) agrupados por mes.
+     * Devuelve hasta los últimos 12 meses con al menos un paciente nuevo.
+     */
+    public function getPatientsMonthly(): array
+    {
+        $rows = DB::select("
+            SELECT
+                YEAR(first_eval.first_date)  AS year,
+                MONTH(first_eval.first_date) AS month,
+                COUNT(*)                     AS new_patients
+            FROM (
+                SELECT patient_id, MIN(p.procedure_date) AS first_date
+                FROM procedures p
+                JOIN medical_evaluations me ON p.medical_evaluation_id = me.id
+                WHERE me.status = 'CONFIRMADO'
+                GROUP BY patient_id
+            ) AS first_eval
+            WHERE first_eval.first_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+            GROUP BY year, month
+            ORDER BY year ASC, month ASC
+        ");
+
+        return array_map(fn($row) => [
+            'year'         => (int) $row->year,
+            'month'        => (int) $row->month,
+            'new_patients' => (int) $row->new_patients,
+        ], $rows);
+    }
+
+    // ─────────────────────────────────────────────
+    // INCOME BY PROCEDURE — histórico total
+    // ─────────────────────────────────────────────
+
+    /**
+     * Ingresos totales agrupados por tipo de procedimiento (item_name).
+     * Considera solo evaluaciones CONFIRMADAS. Histórico completo.
+     */
+    public function getIncomeByProcedure(): \Illuminate\Support\Collection
+    {
+        return ProcedureItem::whereHas('procedure.medicalEvaluation', fn($q) =>
+            $q->where('status', 'CONFIRMADO')
+        )
+        ->select('item_name', DB::raw('SUM(price) as total_income'))
+        ->groupBy('item_name')
+        ->orderByDesc('total_income')
+        ->get()
+        ->map(fn($row) => [
+            'item_name'    => $row->item_name,
+            'total_income' => (float) $row->total_income,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────
+    // INCOME MONTHLY — últimos 12 meses
+    // ─────────────────────────────────────────────
+
+    /**
+     * Ingresos mensuales confirmados para los últimos 12 meses.
+     */
+    public function getIncomeMonthly(): array
+    {
+        $rows = DB::select("
+            SELECT
+                YEAR(p.procedure_date)  AS year,
+                MONTH(p.procedure_date) AS month,
+                SUM(p.total_amount)     AS total_income
+            FROM procedures p
+            JOIN medical_evaluations me ON p.medical_evaluation_id = me.id
+            WHERE me.status = 'CONFIRMADO'
+              AND p.procedure_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+            GROUP BY year, month
+            ORDER BY year ASC, month ASC
+        ");
+
+        return array_map(fn($row) => [
+            'year'         => (int) $row->year,
+            'month'        => (int) $row->month,
+            'total_income' => (float) $row->total_income,
+        ], $rows);
+    }
+
+    // ─────────────────────────────────────────────
+    // INCOME WEEKLY — semana en curso
+    // ─────────────────────────────────────────────
+
+    /**
+     * Ingresos diarios de la semana actual (lunes a hoy).
+     */
+    public function getIncomeWeekly(): array
+    {
+        $rows = DB::select("
+            SELECT
+                DATE(p.procedure_date) AS date,
+                SUM(p.total_amount)    AS total_income
+            FROM procedures p
+            JOIN medical_evaluations me ON p.medical_evaluation_id = me.id
+            WHERE me.status = 'CONFIRMADO'
+              AND YEARWEEK(p.procedure_date, 1) = YEARWEEK(CURDATE(), 1)
+            GROUP BY date
+            ORDER BY date ASC
+        ");
+
+        return array_map(fn($row) => [
+            'date'         => $row->date,
+            'total_income' => (float) $row->total_income,
+        ], $rows);
+    }
+
+    // ─────────────────────────────────────────────
     // REFERRER SELF-SUMMARY
     // ─────────────────────────────────────────────
 

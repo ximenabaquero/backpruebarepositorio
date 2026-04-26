@@ -124,6 +124,42 @@ class StatsController extends Controller
         }
     }
 
+    public function patientsMonthly(): JsonResponse
+    {
+        try {
+            return ApiResponse::success($this->stats->getPatientsMonthly());
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener pacientes por mes', debug: $e->getMessage());
+        }
+    }
+
+    public function incomeByProcedure(): JsonResponse
+    {
+        try {
+            return ApiResponse::success($this->stats->getIncomeByProcedure());
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener ingresos por procedimiento', debug: $e->getMessage());
+        }
+    }
+
+    public function incomeMonthly(): JsonResponse
+    {
+        try {
+            return ApiResponse::success($this->stats->getIncomeMonthly());
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener ingresos mensuales', debug: $e->getMessage());
+        }
+    }
+
+    public function incomeWeekly(): JsonResponse
+    {
+        try {
+            return ApiResponse::success($this->stats->getIncomeWeekly());
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al obtener ingresos semanales', debug: $e->getMessage());
+        }
+    }
+
     // ─────────────────────────────────────────────
     // REMITENTE — bajo auth:sanctum sin middleware admin
     // Verificamos el rol acá porque la ruta no tiene middleware de rol
@@ -131,13 +167,16 @@ class StatsController extends Controller
 
     public function referrerSummary(): JsonResponse
     {
-        if (! Auth::user()->isRemitente()) {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        if (! $user->isRemitente()) {
             return ApiResponse::forbidden();
         }
 
         try {
             return ApiResponse::success(
-                $this->stats->getReferrerSummary(Auth::user()->name)
+                $this->stats->getReferrerSummary($user->name)
             );
         } catch (Throwable $e) {
             return ApiResponse::error('Error al obtener tus estadísticas', debug: $e->getMessage());
@@ -146,13 +185,16 @@ class StatsController extends Controller
 
     public function referrerAnnualComparison(): JsonResponse
     {
-        if (! Auth::user()->isRemitente()) {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        if (! $user->isRemitente()) {
             return ApiResponse::forbidden();
         }
 
         try {
             return ApiResponse::success(
-                $this->stats->getAnnualComparison(Auth::user()->name)
+                $this->stats->getAnnualComparison($user->name)
             );
         } catch (Throwable $e) {
             return ApiResponse::error('Error en comparativa anual', debug: $e->getMessage());
@@ -161,13 +203,16 @@ class StatsController extends Controller
 
     public function referrerMonthComparison(): JsonResponse
     {
-        if (! Auth::user()->isRemitente()) {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        if (! $user->isRemitente()) {
             return ApiResponse::forbidden();
         }
 
         try {
             return ApiResponse::success(
-                $this->stats->getMonthComparison(Auth::user()->name)
+                $this->stats->getMonthComparison($user->name)
             );
         } catch (Throwable $e) {
             return ApiResponse::error('Error en comparativa mensual', debug: $e->getMessage());
