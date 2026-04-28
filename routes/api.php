@@ -124,6 +124,10 @@ Route::prefix('v1')->group(function () {
 
             // Solo admin
             Route::middleware('admin')->group(function () {
+                Route::post('/distributors',        [DistributorController::class, 'store']);
+                Route::put('/distributors/{id}',    [DistributorController::class, 'update']);
+                Route::delete('/distributors/{id}', [DistributorController::class, 'destroy']);
+
                 Route::post('/categories',     [InventoryController::class, 'categoriesStore']);
                 Route::put('/categories/{id}', [InventoryController::class, 'categoriesUpdate']);
 

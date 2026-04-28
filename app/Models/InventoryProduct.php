@@ -19,11 +19,13 @@ class InventoryProduct extends Model
         'type',
         'stock',
         'active',
+        'unit_price',
     ];
 
     protected $casts = [
         'active'     => 'boolean',
         'stock'      => 'integer',
+        'unit_price' => 'decimal:2',
     ];
 
     // ─────────────────────────────────────────────
