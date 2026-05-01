@@ -100,16 +100,16 @@ Route::prefix('v1')->group(function () {
         Route::prefix('inventory')->group(function () {
 
             // Lectura libre — ambos roles
-            Route::get('/categories', [InventoryController::class, 'categoriesIndex']);
-            Route::get('/products',   [InventoryController::class, 'productsIndex']);
-
+            Route::get('/categories',             [InventoryController::class, 'categoriesIndex']);
+            Route::get('/products',               [InventoryController::class, 'productsIndex']);
+            Route::get('/products/notifications', [InventoryController::class, 'productsNotifications']); 
             // Ver distribuidores
             Route::get('/distributors', [DistributorController::class, 'index']);
 
             // Compras — ambos roles
-            Route::get('/purchases',  [InventoryController::class, 'purchasesIndex']);
-            Route::post('/purchases', [InventoryController::class, 'purchasesStore']);
-            Route::get('/purchases/last/{productId}', [InventoryController::class, 'lastPurchase']);
+            Route::get('/purchases',                       [InventoryController::class, 'purchasesIndex']);
+            Route::post('/purchases',                      [InventoryController::class, 'purchasesStore']);
+            Route::get('/purchases/last/{productId}',      [InventoryController::class, 'lastPurchase']);
 
             // Consumos — ambos roles
             Route::get('/usages',  [InventoryController::class, 'usagesIndex']);
@@ -117,8 +117,8 @@ Route::prefix('v1')->group(function () {
 
             // Reportes — ambos roles
             Route::prefix('reports')->group(function () {
-                Route::get('/spend-by-category',       [InventoryController::class, 'spendByCategory']);
-                Route::get('/spend-by-distributor',    [InventoryController::class, 'spendByDistributor']);
+                Route::get('/spend-by-category',         [InventoryController::class, 'spendByCategory']);
+                Route::get('/spend-by-distributor',      [InventoryController::class, 'spendByDistributor']);
                 Route::get('/price-history/{productId}', [InventoryController::class, 'priceHistory']);
             });
 
@@ -126,12 +126,12 @@ Route::prefix('v1')->group(function () {
             Route::middleware('admin')->group(function () {
                 Route::post('/distributors',        [DistributorController::class, 'store']);
                 Route::put('/distributors/{id}',    [DistributorController::class, 'update']);
-                Route::delete('/distributors/{id}', [DistributorController::class, 'destroy']);
+                // Route::delete('/distributors/{id}', [DistributorController::class, 'destroy']);
 
                 Route::post('/categories',     [InventoryController::class, 'categoriesStore']);
                 Route::put('/categories/{id}', [InventoryController::class, 'categoriesUpdate']);
 
-                Route::post('/products', [InventoryController::class, 'productsStore']);
+                // Route::post('/products', [InventoryController::class, 'productsStore']);
 
                 // Summary financiero — ingresos, gastos y utilidad
                 Route::get('/summary', [InventoryController::class, 'summary']);

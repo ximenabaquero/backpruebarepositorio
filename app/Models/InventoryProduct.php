@@ -17,16 +17,53 @@ class InventoryProduct extends Model
         'name',
         'description',
         'type',
-        'stock',
-        'active',
-        'unit_price',
+        'stock_actual',
+        'stock_minimo',
     ];
 
     protected $casts = [
-        'active'     => 'boolean',
-        'stock'      => 'integer',
-        'unit_price' => 'decimal:2',
+        'stock_actual'      => 'integer',
+        'stock_minimo'      => 'integer',
     ];
+
+    protected $appends = ['estado', 'label_stock', 'cantidad'];
+
+    /**
+     * Lógica de Estado: Solo para Insumos.
+     * Si es Equipo, devuelve null o vacío.
+     */
+    public function getEstadoAttribute(): ?string
+    {
+        if ($this->type === self::TYPE_EQUIPO) {
+            return null; 
+        }
+
+        if ($this->stock_actual <= 0) {
+            return 'Agotado';
+        }
+
+        if ($this->stock_actual <= $this->stock_minimo) {
+            return 'Crítico';
+        }
+
+        return 'Disponible';
+    }
+
+    /**
+     * Accessor para mostrar 'Stock' o 'Cantidad' dinámicamente.
+     */
+    public function getLabelStockAttribute(): string
+    {
+        return $this->type === self::TYPE_EQUIPO ? 'Cantidad' : 'Stock';
+    }
+
+    /**
+     * Alias de stock_actual para mantener la consistencia en el front.
+     */
+    public function getCantidadAttribute(): int
+    {
+        return $this->stock_actual;
+    }
 
     // ─────────────────────────────────────────────
     // Relaciones

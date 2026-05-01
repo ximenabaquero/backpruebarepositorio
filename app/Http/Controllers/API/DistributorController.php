@@ -48,6 +48,7 @@ class DistributorController extends Controller
         }
     }
 
+    /*
     public function destroy(int $id)
     {
         try {
@@ -67,5 +68,5 @@ class DistributorController extends Controller
         } catch (\Throwable $e) {
             return ApiResponse::error('Error al eliminar distribuidor', 500, $e->getMessage());
         }
-    }
+    }*/
 }
