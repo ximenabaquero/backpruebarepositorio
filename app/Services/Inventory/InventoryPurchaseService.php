@@ -2,6 +2,7 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\Distributor;
 use App\Models\InventoryProduct;
 use App\Models\InventoryPurchase;
 use Illuminate\Database\Eloquent\Collection;
@@ -9,13 +10,16 @@ use Illuminate\Support\Facades\DB;
 
 class InventoryPurchaseService
 {
+    // =========================================================================
+    // Listado
+    // =========================================================================
+
     /**
      * Listado de compras con búsqueda y filtro de categoría.
      *
-     * $filters:
-     *   search      → string — busca en nombre de producto, nombre del comprador
-     *                          y nombre del distribuidor (OR, case-insensitive)
-     *   category_id → int    — filtra por categoría exacta del producto
+     * Filtros opcionales (combinables):
+     *   search      → busca en nombre de producto, comprador y distribuidor (OR)
+     *   category_id → filtra por categoría exacta del producto
      */
     public function listAll(array $filters = []): Collection
     {
@@ -29,9 +33,9 @@ class InventoryPurchaseService
                 function ($q) use ($filters) {
                     $term = "%{$filters['search']}%";
                     $q->where(function ($q) use ($term) {
-                        $q->whereHas('product',     fn($p) => $p->where('name', 'like', $term))
-                          ->orWhereHas('user',       fn($u) => $u->where('name', 'like', $term))
-                          ->orWhereHas('distributor',fn($d) => $d->where('name', 'like', $term));
+                        $q->whereHas('product',      fn($p) => $p->where('name', 'like', $term))
+                          ->orWhereHas('user',        fn($u) => $u->where('name', 'like', $term))
+                          ->orWhereHas('distributor', fn($d) => $d->where('name', 'like', $term));
                     });
                 }
             )
@@ -45,37 +49,50 @@ class InventoryPurchaseService
             ->get();
     }
 
+    // =========================================================================
+    // Registro
+    // =========================================================================
+
     /**
-     * Registra una compra. Crea el producto si no existe; reutiliza si ya existe.
+     * Registra una compra dentro de una transacción atómica.
+     * Crea el producto y/o el distribuidor si no existen.
      *
-     * Calculados internamente (no vienen del request):
-     *   purchase_date → now()
-     *   total_price   → quantity * unit_price
-     *   stock         → se incrementa sobre el producto si es insumo
+     * $data esperado (validado por StorePurchaseRequest):
      *
-     * $data esperado:
-     *   product_id     → int|null   si viene, reutiliza el producto existente
-     *   name           → string     obligatorio solo si no hay product_id
-     *   category_id    → int        obligatorio solo si no hay product_id
-     *   type           → string     obligatorio solo si no hay product_id
-     *   description    → string|null
-     *   user_id        → int        inyectado en el controller con auth()->id()
-     *   distributor_id → int|null   null = compra sin distribuidor registrado
-     *   quantity       → int
-     *   unit_price     → float
-     *   notes          → string|null
+     *   — Producto —
+     *   product_id          int|null   reutiliza existente
+     *   name                string     requerido si no hay product_id
+     *   category_id         int        requerido si no hay product_id
+     *   type                string     requerido si no hay product_id
+     *   description         string|null
+     *   stock_minimo        int        requerido si no hay product_id
+     *
+     *   — Distribuidor (todos opcionales) —
+     *   distributor_id      int|null   reutiliza existente
+     *   distributor_name    string|null crea uno nuevo
+     *   distributor_cellphone string|null
+     *   distributor_email   string|null
+     *
+     *   — Compra —
+     *   user_id             int        inyectado desde auth() en el controller
+     *   quantity            int
+     *   unit_price          float
+     *   notes               string|null
      */
     public function register(array $data): InventoryPurchase
     {
         return DB::transaction(function () use ($data) {
-            $product = isset($data['product_id'])
-                ? InventoryProduct::lockForUpdate()->findOrFail($data['product_id'])
-                : $this->createProduct($data);
+            // Paso 1 — Producto
+            $product = $this->resolveProduct($data);
 
+            // Paso 2 — Distribuidor (null si la compra es independiente)
+            $distributorId = $this->resolveDistributorId($data);
+
+            // Paso 3 — Compra: siempre un registro nuevo (historial)
             $purchase = InventoryPurchase::create([
                 'user_id'        => $data['user_id'],
                 'product_id'     => $product->id,
-                'distributor_id' => $data['distributor_id'] ?? null,
+                'distributor_id' => $distributorId,
                 'quantity'       => $data['quantity'],
                 'unit_price'     => $data['unit_price'],
                 'total_price'    => $data['quantity'] * $data['unit_price'],
@@ -83,46 +100,71 @@ class InventoryPurchaseService
                 'notes'          => $data['notes'] ?? null,
             ]);
 
-            // Los equipos son gasto único, no afectan stock
-            if ($product->type === InventoryProduct::TYPE_INSUMO) {
-                $product->increment('stock', $data['quantity']);
-                $product->update(['unit_price' => $data['unit_price']]);
-            }
+            // Post-compra: stock_actual funciona como cantidad en equipos
+            $product->increment('stock_actual', $data['quantity']);
 
             return $purchase->load(['product.category', 'user:id,name', 'distributor:id,name']);
         });
     }
 
-    // ─────────────────────────────────────────────
-    // Stats — dashboard del admin (GLOBAL)
-    // ─────────────────────────────────────────────
+    // =========================================================================
+    // Stats
+    // =========================================================================
 
     public function getTotalExpenses(): float
     {
         return (float) InventoryPurchase::sum('total_price');
     }
 
-    /**
-     * $totalIncome viene del StatsService — este método no lo calcula, solo resta.
-     */
     public function getNetProfit(float $totalIncome): float
     {
         return $totalIncome - $this->getTotalExpenses();
     }
 
-    // ─────────────────────────────────────────────
+    // =========================================================================
     // Privados
-    // ─────────────────────────────────────────────
+    // =========================================================================
 
-    private function createProduct(array $data): InventoryProduct
+    /**
+     * Devuelve el producto existente (con lock para evitar race conditions)
+     * o crea uno nuevo si no se proporcionó product_id.
+     */
+    private function resolveProduct(array $data): InventoryProduct
     {
+        if (isset($data['product_id'])) {
+            return InventoryProduct::lockForUpdate()->findOrFail($data['product_id']);
+        }
+
+        $isInsumo = $data['type'] === InventoryProduct::TYPE_INSUMO;
+
         return InventoryProduct::create([
-            'category_id' => $data['category_id'],
-            'name'        => $data['name'],
-            'description' => $data['description'] ?? null,
-            'type'        => $data['type'],
-            'stock'       => 0,
-            'active'      => true,
+            'category_id'  => $data['category_id'],
+            'name'         => $data['name'],
+            'type'         => $data['type'],
+            'description'  => $data['description']              ?? null,
+            'stock_actual' => 0,
+            'stock_minimo' => $isInsumo ? ($data['stock_minimo'] ?? 0) : null,
         ]);
+    }
+
+    /**
+     * Resuelve el distribuidor_id según el caso:
+     *   - distributor_name → firstOrCreate (nunca duplica por nombre)
+     *   - distributor_id   → devuelve el id casteado
+     *   - ninguno          → null (compra sin distribuidor)
+     */
+    private function resolveDistributorId(array $data): ?int
+    {
+        if (!empty($data['distributor_name'])) {
+            return Distributor::firstOrCreate(
+                ['name' => $data['distributor_name']],
+                [
+                    'cellphone' => $data['distributor_cellphone'] ?? null,
+                    'email'     => $data['distributor_email']     ?? null,
+                ]
+            )->id;
+        }
+
+        return isset($data['distributor_id']) ? (int) $data['distributor_id'] : null;
     }
 }

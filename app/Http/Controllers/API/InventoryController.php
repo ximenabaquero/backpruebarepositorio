@@ -2,19 +2,18 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Exceptions\Inventory\EquipoHasNoStockException;
 use App\Exceptions\Inventory\InsufficientStockException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\StoreCategoryRequest;
 use App\Http\Requests\Inventory\StorePurchaseRequest;
 use App\Http\Requests\Inventory\StoreUsageRequest;
 use App\Http\Requests\Inventory\UpdateCategoryRequest;
-use App\Http\Requests\Inventory\StoreProductRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\InventoryCategory;
 use App\Models\InventoryProduct;
 use App\Models\InventoryUsage;
 use App\Services\Inventory\InventoryCategoryService;
+use App\Services\Inventory\InventoryProductService;     
 use App\Services\Inventory\InventoryPurchaseService;
 use App\Services\Inventory\InventoryUsageService;
 use App\Services\StatsService;
@@ -27,6 +26,7 @@ class InventoryController extends Controller
 {
     public function __construct(
         private readonly InventoryCategoryService $categoryService,
+        private readonly InventoryProductService  $productService,   
         private readonly InventoryPurchaseService $purchaseService,
         private readonly InventoryUsageService    $usageService,
         private readonly StatsService             $statsService,
@@ -41,7 +41,6 @@ class InventoryController extends Controller
         return ApiResponse::success($this->categoryService->all());
     }
 
-    /** Solo admin — garantizado por middleware en rutas */
     public function categoriesStore(StoreCategoryRequest $request): JsonResponse
     {
         $category = $this->categoryService->create(
@@ -52,7 +51,6 @@ class InventoryController extends Controller
         return ApiResponse::success($category, 201);
     }
 
-    /** Solo admin — garantizado por middleware en rutas */
     public function categoriesUpdate(UpdateCategoryRequest $request, int $id): JsonResponse
     {
         $category = InventoryCategory::findOrFail($id);
@@ -66,50 +64,27 @@ class InventoryController extends Controller
     // PRODUCTOS
     // =========================================================================
 
+    /**
+     * Catálogo completo — diferencia insumos de equipos en los campos expuestos.
+     */
     public function productsIndex(): JsonResponse
     {
-        $products = InventoryProduct::with('category')
-            ->where('active', true)
-            ->orderBy('name')
-            ->get();
-
-        return ApiResponse::success($products);
+        return ApiResponse::success($this->productService->getCatalogForDashboard());
     }
 
     /**
-     * Crea un producto nuevo con stock inicial 0.
-     * Solo admin — garantizado por middleware en rutas.
+     * Resumen de alertas de stock bajo para la campana.
+     * Solo insumos — los equipos no tienen stock mínimo.
      */
-    public function productsStore(StoreProductRequest $request): JsonResponse
+    public function productsNotifications(): JsonResponse
     {
-        $data = $request->validated();
-
-        $product = InventoryProduct::create([
-            'name'        => $data['name'],
-            'category_id' => $data['category_id'],
-            'type'        => $data['type'],
-            'description' => $data['description'] ?? null,
-            'stock'       => 0,
-            'unit_price'  => 0,
-            'active'      => true,
-        ]);
-
-        $product->load('category');
-
-        return ApiResponse::success($product, 201);
+        return ApiResponse::success($this->productService->getNotificationSummary());
     }
 
     // =========================================================================
     // COMPRAS
     // =========================================================================
 
-    /**
-     * Ambos roles pueden ver el listado de compras.
-     *
-     * Query params opcionales (combinables):
-     *   ?search=texto      — busca en nombre de producto, comprador y distribuidor (OR)
-     *   ?category_id=2     — filtra por categoría del producto
-     */
     public function purchasesIndex(Request $request): JsonResponse
     {
         $filters = $request->only(['search', 'category_id']);
@@ -117,10 +92,6 @@ class InventoryController extends Controller
         return ApiResponse::success($this->purchaseService->listAll($filters));
     }
 
-    /**
-     * Ambos roles pueden registrar compras.
-     * user_id se inyecta desde auth() — nunca desde el request.
-     */
     public function purchasesStore(StorePurchaseRequest $request): JsonResponse
     {
         $data            = $request->validated();
@@ -129,10 +100,6 @@ class InventoryController extends Controller
         return ApiResponse::success($this->purchaseService->register($data), 201);
     }
 
-    /**
-     * Obtiene la última compra de un producto específico
-     * Útil para autocompletar precio y distribuidor en nuevas compras
-     */
     public function lastPurchase(int $productId): JsonResponse
     {
         $lastPurchase = DB::table('inventory_purchases')
@@ -141,24 +108,13 @@ class InventoryController extends Controller
             ->orderBy('purchase_date', 'desc')
             ->first();
 
-        if (!$lastPurchase) {
-            return ApiResponse::success(null);
-        }
-
-        return ApiResponse::success($lastPurchase);
+        return ApiResponse::success($lastPurchase); // null si no existe — el front lo maneja
     }
 
     // =========================================================================
     // CONSUMOS
     // =========================================================================
 
-    /**
-     * Ambos roles pueden ver el listado de consumos.
-     *
-     * Query params opcionales (combinables):
-     *   ?search=texto      — busca en nombre de producto y nombre de quien registró (OR)
-     *   ?category_id=2     — filtra por categoría del producto
-     */
     public function usagesIndex(Request $request): JsonResponse
     {
         $filters = $request->only(['search', 'category_id']);
@@ -167,13 +123,9 @@ class InventoryController extends Controller
     }
 
     /**
-     * Registra consumos clínicos (con paciente) o generales (sin paciente).
-     *
-     * El request valida que:
-     *   - Si status = con_paciente → medical_evaluation_id requerido y CONFIRMADO
-     *   - Si status = sin_paciente → reason requerido
-     *
-     * Si la cantidad supera el stock disponible → 422 con mensaje del producto afectado.
+     * Insumos  → valida stock y descuenta.
+     * Equipos  → registra el uso sin tocar stock_actual.
+     * Stock insuficiente en insumo → 422.
      */
     public function usagesStore(StoreUsageRequest $request): JsonResponse
     {
@@ -193,7 +145,7 @@ class InventoryController extends Controller
                     reason: $data['reason'],
                     items:  $data['items'],
                 );
-        } catch (InsufficientStockException | EquipoHasNoStockException $e) {
+        } catch (InsufficientStockException $e) {   
             return ApiResponse::error($e->getMessage(), 422);
         }
 
@@ -201,12 +153,9 @@ class InventoryController extends Controller
     }
 
     // =========================================================================
-    // SUMMARY — solo admin (garantizado por middleware en rutas)
+    // SUMMARY
     // =========================================================================
 
-    /**
-     * Ingresos totales, gastos totales y utilidad neta.
-     */
     public function summary(): JsonResponse
     {
         $totalIncome   = $this->statsService->getSummary()['total_income'];
@@ -223,13 +172,6 @@ class InventoryController extends Controller
     // REPORTES
     // =========================================================================
 
-    /**
-     * Gasto por categoría en un período específico.
-     *
-     * Query params opcionales:
-     *   ?month=4           — filtra por mes (1-12)
-     *   ?year=2026         — filtra por año
-     */
     public function spendByCategory(Request $request): JsonResponse
     {
         $month = $request->query('month');
@@ -245,28 +187,14 @@ class InventoryController extends Controller
                 DB::raw('COUNT(ip.id) as count')
             );
 
-        if ($month) {
-            $query->whereMonth('ip.purchase_date', $month);
-        }
-        if ($year) {
-            $query->whereYear('ip.purchase_date', $year);
-        }
+        if ($month) $query->whereMonth('ip.purchase_date', $month);
+        if ($year)  $query->whereYear('ip.purchase_date', $year);
 
-        $results = $query
-            ->groupBy('ic.id', 'ic.name')
-            ->orderByDesc('amount')
-            ->get();
-
-        return ApiResponse::success($results);
+        return ApiResponse::success(
+            $query->groupBy('ic.id', 'ic.name')->orderByDesc('amount')->get()
+        );
     }
 
-    /**
-     * Gasto por distribuidor en un período específico.
-     *
-     * Query params opcionales:
-     *   ?month=4           — filtra por mes (1-12)
-     *   ?year=2026         — filtra por año
-     */
     public function spendByDistributor(Request $request): JsonResponse
     {
         $month = $request->query('month');
@@ -281,26 +209,14 @@ class InventoryController extends Controller
                 DB::raw('COUNT(ip.id) as count')
             );
 
-        if ($month) {
-            $query->whereMonth('ip.purchase_date', $month);
-        }
-        if ($year) {
-            $query->whereYear('ip.purchase_date', $year);
-        }
+        if ($month) $query->whereMonth('ip.purchase_date', $month);
+        if ($year)  $query->whereYear('ip.purchase_date', $year);
 
-        $results = $query
-            ->groupBy('d.id', 'd.name')
-            ->orderByDesc('amount')
-            ->get();
-
-        return ApiResponse::success($results);
+        return ApiResponse::success(
+            $query->groupBy('d.id', 'd.name')->orderByDesc('amount')->get()
+        );
     }
 
-    /**
-     * Histórico de precios de un producto.
-     *
-     * Retorna las últimas 12 compras del producto ordenadas por fecha.
-     */
     public function priceHistory(int $productId): JsonResponse
     {
         $history = DB::table('inventory_purchases')
