@@ -2,7 +2,6 @@
 
 namespace App\Services\Inventory;
 
-use App\Exceptions\Inventory\EquipoHasNoStockException;
 use App\Exceptions\Inventory\InsufficientStockException;
 use App\Models\InventoryProduct;
 use App\Models\InventoryUsage;
@@ -49,10 +48,10 @@ class InventoryUsageService
      * Consumo desde un expediente clínico (con paciente).
      * El request ya garantiza que el medical_evaluation está CONFIRMADO.
      *
-     * usage_date → automático con now().
-     * $items = [['product_id' => int, 'quantity' => int], ...]
+     * Insumos  → valida stock y descuenta.
+     * Equipos  → registra el uso sin tocar stock_actual (no se "gasta").
      *
-     * Retorna Eloquent\Collection para consistencia con el tipo declarado.
+     * $items = [['product_id' => int, 'quantity' => int], ...]
      */
     public function registerClinical(
         int $userId,
@@ -70,10 +69,11 @@ class InventoryUsageService
 
                 $product = InventoryProduct::lockForUpdate()->findOrFail($item['product_id']);
 
-                $this->guardEquipo($product);
-                $this->guardStock($product, $item['quantity']);
-
-                $product->decrement('stock', $item['quantity']);
+                // Solo insumos descuentan stock
+                if ($product->type === InventoryProduct::TYPE_INSUMO) {
+                    $this->guardStock($product, $item['quantity']);
+                    $product->decrement('stock_actual', $item['quantity']);
+                }
 
                 $usages[] = InventoryUsage::create([
                     'product_id'            => $product->id,
@@ -86,7 +86,6 @@ class InventoryUsageService
                 ])->load('product.category', 'user:id,name');
             }
 
-            // Retorna Eloquent Collection — compatible con el tipo declarado
             return InventoryUsage::whereIn('id', collect($usages)->pluck('id'))->get();
         });
     }
@@ -94,7 +93,9 @@ class InventoryUsageService
     /**
      * Consumo general sin paciente (merma, prueba, mantenimiento, etc).
      *
-     * usage_date → automático con now().
+     * Insumos  → valida stock y descuenta.
+     * Equipos  → registra el uso sin tocar stock_actual (no se "gasta").
+     *
      * $items = [['product_id' => int, 'quantity' => int], ...]
      */
     public function registerGeneral(int $userId, string $reason, array $items): Collection
@@ -109,10 +110,11 @@ class InventoryUsageService
 
                 $product = InventoryProduct::lockForUpdate()->findOrFail($item['product_id']);
 
-                $this->guardEquipo($product);
-                $this->guardStock($product, $item['quantity']);
-
-                $product->decrement('stock', $item['quantity']);
+                // Solo insumos descuentan stock
+                if ($product->type === InventoryProduct::TYPE_INSUMO) {
+                    $this->guardStock($product, $item['quantity']);
+                    $product->decrement('stock_actual', $item['quantity']);
+                }
 
                 $usages[] = InventoryUsage::create([
                     'product_id'            => $product->id,
@@ -125,7 +127,6 @@ class InventoryUsageService
                 ]);
             }
 
-            // Retorna Eloquent Collection — compatible con el tipo declarado
             return InventoryUsage::with('product.category', 'user:id,name')
                 ->whereIn('id', collect($usages)->pluck('id'))
                 ->get();
@@ -136,17 +137,20 @@ class InventoryUsageService
     // Guards
     // ─────────────────────────────────────────────
 
-    private function guardEquipo(InventoryProduct $product): void
-    {
-        if ($product->type === InventoryProduct::TYPE_EQUIPO) {
-            throw new EquipoHasNoStockException($product->name);
-        }
-    }
-
+    /**
+     * Valida que haya stock suficiente.
+     * Solo se llama para insumos — los equipos no pasan por aquí.
+     *
+     * @throws InsufficientStockException
+     */
     private function guardStock(InventoryProduct $product, int $quantity): void
     {
-        if ($product->stock < $quantity) {
-            throw new InsufficientStockException($product->name, $product->stock, $quantity);
+        if ($product->stock_actual < $quantity) {
+            throw new InsufficientStockException(
+                $product->name,
+                $product->stock_actual,
+                $quantity
+            );
         }
     }
 }

@@ -28,7 +28,7 @@ class ClinicSeeder extends Seeder
         ]);
 
         // ── 2. Remitentes ─────────────────────────────────────────────────
-        $remitentesActivos   = User::factory()->remitente()->count(3)->create();
+        $remitentesActivos = User::factory()->remitente()->count(3)->create();
         User::factory()->remitente()->inactivo()->count(2)->create();
         User::factory()->remitente()->despedido()->count(2)->create();
 
@@ -112,11 +112,12 @@ class ClinicSeeder extends Seeder
         $insumos = $categorias->flatMap(fn(InventoryCategory $cat) =>
             InventoryProduct::factory()
                 ->insumo()
+                ->sinStock()              // el stock lo acumula cada compra abajo
                 ->count(rand(2, 3))
                 ->create(['category_id' => $cat->id])
         );
 
-        // Equipos (no consumibles, gasto único)
+        // Equipos — cantidad inicial real, sin stock_minimo
         $equipos = InventoryProduct::factory()
             ->equipo()
             ->count(2)
@@ -141,21 +142,26 @@ class ClinicSeeder extends Seeder
                     'purchase_date' => $this->randomDateInYear($now, $mesesDisponibles),
                 ]);
 
-                // Incrementar stock en memoria si es insumo
-                if ($producto->type === 'insumo') {
-                    $producto->stock += $quantity;
-                }
+                // Acumular stock_actual en memoria para evitar N queries
+                // Equipos también acumulan cantidad (stock_actual es su contador)
+                $producto->stock_actual += $quantity;
             });
         });
 
-        // Consumos solo de insumos con stock
+        // Guardar stock_actual acumulado en BD para todos los productos
+        $todosLosProductos->each(fn(InventoryProduct $p) =>
+            $p->save()
+        );
+
+        // Consumos — solo insumos con stock_actual > 0
+        // Los equipos no se "gastan", no generan registros de consumo
         $todosLosUsuarios->each(function (User $user) use ($insumos, $mesesDisponibles, $now) {
-            $insumosConStock = $insumos->where('stock', '>', 0);
+            $insumosConStock = $insumos->where('stock_actual', '>', 0);
             if ($insumosConStock->isEmpty()) return;
 
             collect(range(1, rand(2, 4)))->each(function () use ($user, $insumosConStock, $mesesDisponibles, $now) {
                 $producto = $insumosConStock->random();
-                $cantidad = rand(1, min(3, $producto->stock));
+                $cantidad = rand(1, min(3, $producto->stock_actual));
 
                 InventoryUsage::factory()->sinPaciente()->create([
                     'user_id'    => $user->id,
@@ -164,9 +170,13 @@ class ClinicSeeder extends Seeder
                     'usage_date' => $this->randomDateInYear($now, $mesesDisponibles),
                 ]);
 
-                $producto->stock -= $cantidad;
+                // Descontar en memoria para no sobrepasar stock en el seed
+                $producto->stock_actual -= $cantidad;
             });
         });
+
+        // Persistir stock_actual final después de consumos
+        $insumos->each(fn(InventoryProduct $p) => $p->save());
     }
 
     private function randomDateInYear(Carbon $now, array $meses): string
