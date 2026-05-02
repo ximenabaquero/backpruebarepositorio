@@ -6,18 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\StoreDistributorRequest;
 use App\Models\Distributor;
 use App\Http\Responses\ApiResponse;
+use Illuminate\Http\Request;
 
 class DistributorController extends Controller
 {
-    public function index()
+    /**
+     * Obtener lista de distribuidores con soporte para búsqueda por nombre y celular.
+     */
+    public function index(Request $request)
     {
         try {
-            $distributors = Distributor::select('id', 'name', 'cellphone', 'email')
-                ->orderBy('name')
-                ->get();
+            $query = Distributor::select('id', 'name', 'cellphone', 'email');
 
+            if ($request->filled('search')) {
+                $searchTerm = $request->query('search');
+                $query->where('name', 'LIKE', "%{$searchTerm}%");
+                $query->orWhere('cellphone', 'LIKE', "%{$searchTerm}%");
+            }
+            $distributors = $query->orderBy('name')->get();
             return ApiResponse::success($distributors);
-
         } catch (\Throwable $e) {
             return ApiResponse::error('Error al obtener distribuidores', 500, $e->getMessage());
         }
