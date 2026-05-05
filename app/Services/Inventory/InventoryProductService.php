@@ -21,9 +21,9 @@ class InventoryProductService
      *
      * stock_minimo nunca sale al front — es dato interno de alertas.
      */
-    public function getCatalogForDashboard(): Collection
+    public function getCatalogForDashboard(array $filters = []): Collection
     {
-        return InventoryProduct::with('category:id,name')
+        $query = InventoryProduct::with('category:id,name')
             ->select([
                 'id',
                 'name',
@@ -31,11 +31,22 @@ class InventoryProductService
                 'type',
                 'category_id',
                 'stock_actual',
-                'stock_minimo',  // necesario para calcular estado y cantidad, se oculta al final
-            ])
-            ->orderBy('name', 'asc')
+                'stock_minimo',
+            ]);
+
+        // Filtro por Nombre (Buscador)
+        if (!empty($filters['search'])) {
+            $query->where('name', 'LIKE', '%' . $filters['search'] . '%');
+        }
+
+        // Filtro por Categoría (Botones)
+        if (!empty($filters['category_id'])) {
+            $query->where('category_id', $filters['category_id']);
+        }
+
+        return $query->orderBy('name', 'asc')
             ->get()
-            ->makeHidden(['stock_minimo', 'stock_actual']); // el front usa cantidad o label_stock+stock_actual según type
+            ->makeHidden(['stock_minimo', 'stock_actual']);
     }
 
     /**

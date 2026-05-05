@@ -66,10 +66,18 @@ class InventoryController extends Controller
 
     /**
      * Catálogo completo — diferencia insumos de equipos en los campos expuestos.
+     * Soporta filtros opcionales de búsqueda (search) y categoría (category_id).
      */
-    public function productsIndex(): JsonResponse
+    public function productsIndex(Request $request): JsonResponse
     {
-        return ApiResponse::success($this->productService->getCatalogForDashboard());
+        $filters = [
+            'search'      => $request->query('search'),
+            'category_id' => $request->query('category_id'),
+        ];
+
+        $catalog = $this->productService->getCatalogForDashboard($filters);
+
+        return ApiResponse::success($catalog);
     }
 
     /**

@@ -17,7 +17,7 @@ class StoreDistributorRequest extends FormRequest
 
         return [
             'name'      => ['required', 'string', 'max:100', 'unique:distributors,name,' . $distributorId],
-            'cellphone' => ['nullable', 'string', 'max:25'],
+            'cellphone' => ['required', 'string', 'max:25'],
             'email'     => ['nullable', 'email', 'max:100'],
         ];
     }
@@ -26,6 +26,7 @@ class StoreDistributorRequest extends FormRequest
     {
         return [
             'name.required' => 'El nombre del distribuidor es obligatorio.',
+            'cellphone.required' => 'El número de celular del distribuidor es obligatorio.',
             'name.unique'   => 'Ya existe un distribuidor con ese nombre.',
             'email.email'   => 'El correo electrónico no tiene un formato válido.',
         ];
