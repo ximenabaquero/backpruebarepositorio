@@ -58,6 +58,8 @@ XIMCA Backend es la API REST que alimenta la plataforma de gestión clínica par
 | `API/StatsController.php`               | KPIs, top procedimientos, ingresos por remitente            |
 | `API/UserController.php`                | Gestión de remitentes (crear, activar, inactivar, despedir) |
 | `API/AppointmentController.php`         | Citas con integración Google Calendar _(en pausa)_          |
+| `API/InventoryController.php`           | Categorías, productos, compras, consumos y reportes de inventario |
+| `API/DistributorController.php`         | CRUD de distribuidores/proveedores                          |
 
 ### Modelos `/app/Models/`
 
@@ -71,6 +73,11 @@ XIMCA Backend es la API REST que alimenta la plataforma de gestión clínica par
 | `ClinicalImage`         | Imágenes before/after almacenadas en `storage/public`                    |
 | `Appointment`           | Cita con estado y evento de Google Calendar _(en pausa)_                 |
 | `GoogleCalendarSetting` | Tokens OAuth por usuario _(en pausa)_                                    |
+| `InventoryCategory`     | Categorías de productos · pertenece a un usuario ADMIN                   |
+| `InventoryProduct`      | Productos tipados (`insumo` / `equipo`) · stock con alertas calculadas   |
+| `InventoryPurchase`     | Compra de producto · precio unitario + total · distribuidor opcional     |
+| `InventoryUsage`        | Consumo de producto · vinculable a valoración clínica o uso general      |
+| `Distributor`           | Proveedor con nombre, celular y email                                    |
 
 ### Servicios `/app/Services/`
 
@@ -171,7 +178,32 @@ USERS → crea → PATIENTS → tiene → MEDICAL_EVALUATIONS → contiene → P
 | `GET`   | `/stats/income-by-procedure`           | Ingresos históricos por tipo             |
 | `GET`   | `/stats/conversion-rate`               | Tasa de conversión                       |
 | `GET`   | `/stats/patients-monthly`              | Nuevos pacientes por mes                 |
+### Inventario (`/api/v1/inventory/`) — Autenticadas (ambos roles)
 
+| Método | Ruta                                          | Descripción                                               |
+| ------ | --------------------------------------------- | --------------------------------------------------------- |
+| `GET`  | `/inventory/categories`                       | Listar todas las categorías de inventario                 |
+| `GET`  | `/inventory/products`                         | Catálogo completo de productos (insumos y equipos)        |
+| `GET`  | `/inventory/products/notifications`           | Resumen de alertas de stock bajo (solo insumos)           |
+| `GET`  | `/inventory/distributors`                     | Listar distribuidores/proveedores                         |
+| `GET`  | `/inventory/purchases`                        | Listar compras (filtros: `search`, `category_id`)         |
+| `POST` | `/inventory/purchases`                        | Registrar compra (sube stock del producto)                |
+| `GET`  | `/inventory/purchases/last/{productId}`       | Última compra de un producto (precio y distribuidor)      |
+| `GET`  | `/inventory/usages`                           | Listar consumos (filtros: `search`, `category_id`)        |
+| `POST` | `/inventory/usages`                           | Registrar consumo (descuenta stock si es insumo)          |
+| `GET`  | `/inventory/reports/spend-by-category`        | Gasto agrupado por categoría (filtros: `month`, `year`)   |
+| `GET`  | `/inventory/reports/spend-by-distributor`     | Gasto agrupado por distribuidor (filtros: `month`, `year`)|
+| `GET`  | `/inventory/reports/price-history/{productId}`| Historial de precios de compra de un producto             |
+
+### Inventario — Solo ADMIN
+
+| Método | Ruta                             | Descripción                                          |
+| ------ | -------------------------------- | ---------------------------------------------------- |
+| `POST` | `/inventory/distributors`        | Crear distribuidor                                   |
+| `PUT`  | `/inventory/distributors/{id}`   | Actualizar distribuidor                              |
+| `POST` | `/inventory/categories`          | Crear categoría de inventario                        |
+| `PUT`  | `/inventory/categories/{id}`     | Renombrar categoría de inventario                    |
+| `GET`  | `/inventory/summary`             | Resumen financiero: ingresos, gastos y utilidad neta |
 ---
 
 ## Seguridad y autenticación
@@ -274,6 +306,11 @@ Al registrar un paciente, se verifica si ya existe un registro con la misma céd
 | `clinical_images`          | Rutas de imágenes antes/después en `storage/public`                                 |
 | `appointments`             | Citas _(en pausa, estructura lista para Google Calendar)_                           |
 | `google_calendar_settings` | Tokens OAuth por usuario _(en pausa)_                                               |
+| `inventory_categories`     | Categorías de productos · creadas por un usuario ADMIN                              |
+| `inventory_products`       | Productos tipados con stock actual, stock mínimo y estado calculado                 |
+| `inventory_purchases`      | Compras vinculadas a producto, usuario y distribuidor · precio unitario y total     |
+| `inventory_usages`         | Consumos con estado `con_paciente` / `sin_paciente` · razón y fecha de uso          |
+| `distributors`             | Proveedores con nombre, celular y email                                             |
 
 ### Migraciones notables
 
@@ -281,6 +318,48 @@ Al registrar un paciente, se verifica si ya existe un registro con la misma céd
 - `referrer_name` se trasladó de `patients` a `medical_evaluations`, ya que el remitente puede cambiar entre valoraciones del mismo paciente.
 - `age` (campo estático) fue reemplazado por `date_of_birth` + atributo calculado `$patient->age` usando Carbon.
 - `patient_age_at_evaluation` captura la edad en el momento exacto del registro, preservando el dato histórico.
+
+### `inventory_products` — campos clave
+
+| Campo          | Tipo                       | Descripción                                                                  |
+| -------------- | -------------------------- | ---------------------------------------------------------------------------- |
+| `id`           | bigint PK                  | Identificador único                                                          |
+| `category_id`  | FK → inventory_categories  | Categoría del producto                                                       |
+| `name`         | string(100)                | Nombre del producto                                                          |
+| `description`  | string(255) nullable       | Descripción opcional                                                         |
+| `type`         | ENUM                       | `insumo` (consumible con stock) · `equipo` (sin stock mínimo)                |
+| `stock_actual` | integer                    | Unidades disponibles actualmente                                             |
+| `stock_minimo` | integer default 0          | Umbral de alerta de stock bajo (solo insumos)                                |
+| `estado`       | _appended_                 | `Disponible` · `Crítico` · `Agotado` · `null` para equipos                  |
+| `label_stock`  | _appended_                 | `Stock` para insumos · `Cantidad` para equipos                               |
+| `cantidad`     | _appended_                 | Alias de `stock_actual` para consistencia en el frontend                     |
+
+### `inventory_purchases` — campos clave
+
+| Campo           | Tipo                      | Descripción                                             |
+| --------------- | ------------------------- | ------------------------------------------------------- |
+| `id`            | bigint PK                 | Identificador único                                     |
+| `user_id`       | FK → users                | Usuario que registró la compra                          |
+| `product_id`    | FK → inventory_products   | Producto adquirido                                      |
+| `distributor_id`| FK → distributors nullable| Proveedor asociado (null si no se especifica)           |
+| `quantity`      | unsignedInteger           | Cantidad comprada (se suma al stock)                    |
+| `unit_price`    | decimal(10,2)             | Precio unitario en COP                                  |
+| `total_price`   | decimal(10,2)             | Total calculado (`quantity × unit_price`)               |
+| `purchase_date` | date                      | Fecha de la compra                                      |
+| `notes`         | text nullable             | Observaciones opcionales                                |
+
+### `inventory_usages` — campos clave
+
+| Campo                  | Tipo                          | Descripción                                                  |
+| ---------------------- | ----------------------------- | ------------------------------------------------------------ |
+| `id`                   | bigint PK                     | Identificador único                                          |
+| `product_id`           | FK → inventory_products       | Producto consumido                                           |
+| `user_id`              | FK → users                    | Usuario que registró el consumo                              |
+| `medical_evaluation_id`| FK → medical_evaluations null | Valoración asociada (solo si `status = con_paciente`)        |
+| `quantity`             | integer                       | Unidades consumidas (se restan del stock si es insumo)       |
+| `status`               | ENUM                          | `con_paciente` · `sin_paciente`                              |
+| `reason`               | string(500) nullable          | Motivo del consumo                                           |
+| `usage_date`           | date                          | Fecha del consumo                                            |
 
 ### Seeder (`ClinicSeeder`)
 
@@ -336,6 +415,65 @@ php artisan storage:link
 # 8. Iniciar servidor de desarrollo
 php artisan serve --host=127.0.0.1 --port=8000
 ```
+
+---
+
+## Módulo de Inventario
+
+### Tipos de producto
+
+El inventario diferencia dos tipos de producto con comportamientos distintos:
+
+| Tipo      | `stock_actual` | `stock_minimo` | Alertas | Descuenta al consumir |
+| --------- | -------------- | -------------- | ------- | --------------------- |
+| `insumo`  | Sí             | Sí             | Sí      | Sí                    |
+| `equipo`  | Sí (cantidad)  | No aplica      | No      | No                    |
+
+### Estado de stock calculado (`estado`)
+
+Solo para insumos. Se expone como atributo appended en el modelo:
+
+```
+stock_actual <= 0             → Agotado
+stock_actual <= stock_minimo  → Crítico
+de lo contrario               → Disponible
+```
+
+Los equipos devuelven `null` en `estado`.
+
+### Flujo de compras
+
+Al registrar una compra (`POST /inventory/purchases`), el servicio:
+1. Valida que el producto exista.
+2. Suma `quantity` a `stock_actual` del producto.
+3. Persiste el registro con precio unitario, total y distribuidor.
+
+### Flujo de consumos
+
+Al registrar un consumo (`POST /inventory/usages`) se admiten dos modos según `status`:
+
+```
+con_paciente  → requiere medical_evaluation_id · registra consumo clínico
+sin_paciente  → requiere reason · registra consumo general (merma, limpieza, etc.)
+```
+
+Para **insumos**, el sistema valida que `stock_actual >= quantity` antes de descontar. Si no hay stock suficiente, devuelve `422 Unprocessable Entity`.  
+Para **equipos**, se registra el uso sin modificar `stock_actual`.
+
+### Resumen financiero (`GET /inventory/summary`)
+
+Disponible solo para ADMIN. Devuelve:
+
+```json
+{
+  "total_income":   0.00,
+  "total_expenses": 0.00,
+  "net_profit":     0.00
+}
+```
+
+`total_expenses` = suma de todos los `total_price` en `inventory_purchases`.  
+`net_profit` = `total_income` − `total_expenses`.
 
 ---
 
