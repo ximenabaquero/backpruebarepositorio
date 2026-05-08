@@ -155,38 +155,55 @@ class StatsService
         string $startYear,
         string $endYear
     ): \Illuminate\Database\Query\Builder {
+        $procedureStats = DB::table('procedures')
+            ->select(
+                'medical_evaluation_id',
+                DB::raw("MAX(CASE
+                    WHEN procedure_date BETWEEN ? AND ?
+                    THEN 1 ELSE 0 END) as has_procedure_month"),
+                DB::raw("MAX(CASE
+                    WHEN procedure_date BETWEEN ? AND ?
+                    THEN 1 ELSE 0 END) as has_procedure_year"),
+                DB::raw("SUM(CASE
+                    WHEN procedure_date BETWEEN ? AND ?
+                    THEN total_amount ELSE 0 END) as confirmed_income_month"),
+                DB::raw("SUM(CASE
+                    WHEN procedure_date BETWEEN ? AND ?
+                    THEN total_amount ELSE 0 END) as confirmed_income_year")
+            )
+            ->addBinding([
+                $startMonth, $endMonth,
+                $startYear,  $endYear,
+                $startMonth, $endMonth,
+                $startYear,  $endYear,
+            ], 'select')
+            ->groupBy('medical_evaluation_id');
+
         return DB::table('medical_evaluations')
-            ->leftJoin('procedures', 'medical_evaluations.id', '=', 'procedures.medical_evaluation_id')
+            ->leftJoinSub($procedureStats, 'procedure_stats', function ($join) {
+                $join->on('medical_evaluations.id', '=', 'procedure_stats.medical_evaluation_id');
+            })
             ->select(
                 'medical_evaluations.referrer_name',
                 DB::raw("COUNT(DISTINCT CASE
                     WHEN medical_evaluations.status = 'CONFIRMADO'
-                    AND procedures.procedure_date BETWEEN ? AND ?
+                    AND COALESCE(procedure_stats.has_procedure_month, 0) = 1
                     THEN medical_evaluations.patient_id END) as total_patients_month"),
                 DB::raw("SUM(CASE
                     WHEN medical_evaluations.status = 'CONFIRMADO'
-                    AND procedures.procedure_date BETWEEN ? AND ?
+                    AND COALESCE(procedure_stats.has_procedure_month, 0) = 1
                     THEN 1 ELSE 0 END) as total_confirmed_month"),
                 DB::raw("SUM(CASE
                     WHEN medical_evaluations.status = 'CANCELADO'
-                    AND procedures.procedure_date BETWEEN ? AND ?
+                    AND COALESCE(procedure_stats.has_procedure_month, 0) = 1
                     THEN 1 ELSE 0 END) as total_canceled_month"),
                 DB::raw("SUM(CASE
                     WHEN medical_evaluations.status = 'CONFIRMADO'
-                    AND procedures.procedure_date BETWEEN ? AND ?
-                    THEN procedures.total_amount ELSE 0 END) as confirmed_income_month"),
+                    THEN COALESCE(procedure_stats.confirmed_income_month, 0) ELSE 0 END) as confirmed_income_month"),
                 DB::raw("SUM(CASE
                     WHEN medical_evaluations.status = 'CONFIRMADO'
-                    AND procedures.procedure_date BETWEEN ? AND ?
-                    THEN procedures.total_amount ELSE 0 END) as confirmed_income_year")
-            )
-            ->addBinding([
-                $startMonth, $endMonth,
-                $startMonth, $endMonth,
-                $startMonth, $endMonth,
-                $startMonth, $endMonth,
-                $startYear,  $endYear,
-            ], 'select');
+                    THEN COALESCE(procedure_stats.confirmed_income_year, 0) ELSE 0 END) as confirmed_income_year")
+            );
     }
 
     // ─────────────────────────────────────────────
