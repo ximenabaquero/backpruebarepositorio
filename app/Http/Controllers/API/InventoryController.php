@@ -180,10 +180,16 @@ class InventoryController extends Controller
     // REPORTES
     // =========================================================================
 
+    /**
+     * Gasto por categoría.
+     * Sin filtros → año actual completo por defecto.
+     * Con ?year=2025 → ese año.
+     * Con ?month=4&year=2026 → ese mes exacto.
+     */
     public function spendByCategory(Request $request): JsonResponse
     {
         $month = $request->query('month');
-        $year  = $request->query('year');
+        $year  = $request->query('year', now()->year); // ← año actual por defecto
 
         $query = DB::table('inventory_purchases as ip')
             ->join('inventory_products as prod', 'ip.product_id', '=', 'prod.id')
@@ -191,74 +197,69 @@ class InventoryController extends Controller
             ->select(
                 'ic.id as category_id',
                 'ic.name as category_name',
-                DB::raw('SUM(ip.total_price) as amount'),
+                DB::raw('CAST(SUM(ip.total_price) AS UNSIGNED) as amount'),
                 DB::raw('COUNT(ip.id) as count')
-            );
+            )
+            ->whereYear('ip.purchase_date', $year); // ← siempre filtra por año
 
         if ($month) $query->whereMonth('ip.purchase_date', $month);
-        if ($year)  $query->whereYear('ip.purchase_date', $year);
 
-        $items = $query->groupBy('ic.id', 'ic.name')->orderByDesc('amount')->get();
+        $rows = $query
+            ->groupBy('ic.id', 'ic.name')
+            ->orderByDesc('amount')
+            ->get();
 
-        return ApiResponse::success([
-            'period' => $this->buildPeriodLabel($month, $year),
-            'total'  => $items->sum('amount'),
-            'items'  => $items->values(),
-        ]);
+        return ApiResponse::success(
+            $query->groupBy('ic.id', 'ic.name')->orderByDesc('amount')->get()
+        );
     }
 
+    // Igual para spendByDistributor — mismo cambio
     public function spendByDistributor(Request $request): JsonResponse
     {
         $month = $request->query('month');
-        $year  = $request->query('year');
+        $year  = $request->query('year', now()->year);
 
         $query = DB::table('inventory_purchases as ip')
             ->leftJoin('distributors as d', 'ip.distributor_id', '=', 'd.id')
             ->select(
                 'd.id as distributor_id',
                 DB::raw("COALESCE(d.name, 'Sin distribuidor') as distributor_name"),
-                DB::raw('SUM(ip.total_price) as amount'),
+                DB::raw('CAST(SUM(ip.total_price) AS UNSIGNED) as amount'),
                 DB::raw('COUNT(ip.id) as count')
-            );
+            )
+            ->whereYear('ip.purchase_date', $year);
 
         if ($month) $query->whereMonth('ip.purchase_date', $month);
-        if ($year)  $query->whereYear('ip.purchase_date', $year);
 
-        $items = $query->groupBy('d.id', 'd.name')->orderByDesc('amount')->get();
+        $rows = $query
+            ->groupBy('d.id', 'd.name')
+            ->orderByDesc('amount')
+            ->get();
 
-        return ApiResponse::success([
-            'period' => $this->buildPeriodLabel($month, $year),
-            'total'  => $items->sum('amount'),
-            'items'  => $items->values(),
-        ]);
+        return ApiResponse::success(
+            $query->groupBy('d.id', 'd.name')->orderByDesc('amount')->get()
+        );
     }
 
-    private function buildPeriodLabel(?string $month, ?string $year): string
-    {
-        $y = $year ?? now()->year;
-
-        if (!$month) return (string) $y;
-
-        $months = [
-            1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
-            5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
-            9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre',
-        ];
-
-        return ($months[(int) $month] ?? '') . ' ' . $y;
-    }
-
+    /**
+     * Histórico de precios — ventana deslizante de 12 meses.
+     * Agrupa por mes para mostrar tendencia, no compra individual.
+     */
     public function priceHistory(int $productId): JsonResponse
     {
         $history = DB::table('inventory_purchases')
             ->select(
-                DB::raw('DATE(purchase_date) as date'),
-                'unit_price as price',
-                'id as purchase_id'
+                DB::raw("DATE_FORMAT(purchase_date, '%Y-%m') as month"),
+                DB::raw('CAST(AVG(unit_price) AS UNSIGNED) as avg_price'),
+                DB::raw('CAST(MIN(unit_price) AS UNSIGNED) as min_price'),
+                DB::raw('CAST(MAX(unit_price) AS UNSIGNED) as max_price'),
+                DB::raw('COUNT(id) as purchase_count'),
             )
             ->where('product_id', $productId)
-            ->orderBy('purchase_date', 'asc')
-            ->limit(12)
+            ->where('purchase_date', '>=', now()->subMonths(11)->startOfMonth()) // 12 meses incluyendo el actual
+            ->groupBy(DB::raw("DATE_FORMAT(purchase_date, '%Y-%m')"))
+            ->orderBy('month', 'asc')
             ->get();
 
         return ApiResponse::success($history);
