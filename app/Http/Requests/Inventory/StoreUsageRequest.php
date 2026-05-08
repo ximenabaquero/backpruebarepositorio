@@ -38,7 +38,7 @@ class StoreUsageRequest extends FormRequest
                 Rule::requiredIf(! $isClinical),
                 'nullable',
                 'string',
-                'max:300',
+                'max:200',
             ],
 
             'items'              => ['required', 'array', 'min:1'],
