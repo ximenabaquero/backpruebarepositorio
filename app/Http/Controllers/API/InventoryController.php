@@ -198,9 +198,13 @@ class InventoryController extends Controller
         if ($month) $query->whereMonth('ip.purchase_date', $month);
         if ($year)  $query->whereYear('ip.purchase_date', $year);
 
-        return ApiResponse::success(
-            $query->groupBy('ic.id', 'ic.name')->orderByDesc('amount')->get()
-        );
+        $items = $query->groupBy('ic.id', 'ic.name')->orderByDesc('amount')->get();
+
+        return ApiResponse::success([
+            'period' => $this->buildPeriodLabel($month, $year),
+            'total'  => $items->sum('amount'),
+            'items'  => $items->values(),
+        ]);
     }
 
     public function spendByDistributor(Request $request): JsonResponse
@@ -220,9 +224,28 @@ class InventoryController extends Controller
         if ($month) $query->whereMonth('ip.purchase_date', $month);
         if ($year)  $query->whereYear('ip.purchase_date', $year);
 
-        return ApiResponse::success(
-            $query->groupBy('d.id', 'd.name')->orderByDesc('amount')->get()
-        );
+        $items = $query->groupBy('d.id', 'd.name')->orderByDesc('amount')->get();
+
+        return ApiResponse::success([
+            'period' => $this->buildPeriodLabel($month, $year),
+            'total'  => $items->sum('amount'),
+            'items'  => $items->values(),
+        ]);
+    }
+
+    private function buildPeriodLabel(?string $month, ?string $year): string
+    {
+        $y = $year ?? now()->year;
+
+        if (!$month) return (string) $y;
+
+        $months = [
+            1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
+            5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
+            9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre',
+        ];
+
+        return ($months[(int) $month] ?? '') . ' ' . $y;
     }
 
     public function priceHistory(int $productId): JsonResponse
