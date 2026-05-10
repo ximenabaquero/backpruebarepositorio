@@ -1,11 +1,10 @@
 services:
-
   # ─────────────────────────────────────────────
   # PHP — ejecuta Laravel
   # ─────────────────────────────────────────────
   app:
     build:
-      context: .          # usa el Dockerfile de esta carpeta
+      context: . # usa el Dockerfile de esta carpeta
       dockerfile: Dockerfile
     container_name: podocare_app
     restart: unless-stopped
@@ -25,7 +24,7 @@ services:
   # Nginx — servidor web, recibe peticiones HTTP
   # ─────────────────────────────────────────────
   nginx:
-    image: nginx:alpine        # imagen oficial de Nginx, versión liviana
+    image: nginx:alpine # imagen oficial de Nginx, versión liviana
     container_name: podocare_nginx
     restart: unless-stopped
     ports:
@@ -48,8 +47,8 @@ services:
     container_name: podocare_mysql
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: podocare_db
-      MYSQL_ROOT_PASSWORD: Dianabaquero1@
+      MYSQL_DATABASE:
+      MYSQL_ROOT_PASSWORD:
     ports:
       # Puerto 3307 de tu máquina → 3306 del contenedor
       # Usamos 3307 para no chocar si ya tenés MySQL local en 3306
