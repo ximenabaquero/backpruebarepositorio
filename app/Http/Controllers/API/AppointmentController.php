@@ -3,257 +3,144 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreAppointmentRequest;
-use App\Http\Requests\UpdateAppointmentRequest;
+use App\Http\Responses\ApiResponse;
 use App\Models\Appointment;
-use App\Services\GoogleCalendarService;
-use Illuminate\Http\Request;
+use App\Models\MedicalEvaluation;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Throwable;
 
+/**
+ * AppointmentController
+ *
+ * Gestiona la cita agendada para una valoración médica.
+ * Cada valoración tiene como máximo una cita activa.
+ *
+ * Rutas en api.php:
+ *   GET   /medical-evaluations/{medicalEvaluation}/appointment  → show()
+ *   POST  /medical-evaluations/{medicalEvaluation}/appointment  → store()
+ *   PATCH /appointments/{appointment}                           → update()
+ *   DELETE /appointments/{appointment}                          → cancel()
+ */
 class AppointmentController extends Controller
 {
-    protected $calendarService;
-
-    public function __construct()
-    {
-        $this->calendarService = new GoogleCalendarService();
-    }
-
     /**
-     * List all appointments with optional filters
+     * Obtener la cita de una valoración.
+     * Devuelve null si aún no existe ninguna activa.
      */
-    public function index(Request $request): JsonResponse
+    public function show(MedicalEvaluation $medicalEvaluation): JsonResponse
     {
-        try {
-            $query = Appointment::with(['patient', 'user', 'procedure']);
+        $user = auth()->user();
 
-            // Filter by date range
-            if ($request->has('start_date')) {
-                $query->where('appointment_datetime', '>=', $request->start_date);
-            }
-            if ($request->has('end_date')) {
-                $query->where('appointment_datetime', '<=', $request->end_date);
-            }
-
-            // Filter by status
-            if ($request->has('status')) {
-                $query->where('status', $request->status);
-            }
-
-            // Filter by referrer
-            if ($request->has('referrer_name')) {
-                $query->where('referrer_name', $request->referrer_name);
-            }
-
-            // Order by appointment date
-            $appointments = $query->orderBy('appointment_datetime', 'asc')->get();
-
-            return response()->json($appointments);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al obtener citas',
-                'error' => $e->getMessage()
-            ], 500);
+        if ($user->isRemitente() && $medicalEvaluation->user_id !== $user->id) {
+            return ApiResponse::forbidden();
         }
+
+        $appointment = $medicalEvaluation->appointment;
+
+        return ApiResponse::success($appointment);
     }
 
     /**
-     * Get upcoming appointments (next 30 days)
+     * Crear o reemplazar la cita de una valoración.
+     * Si ya existe una cita activa, la reemplaza.
      */
-    public function upcoming(): JsonResponse
+    public function store(Request $request, MedicalEvaluation $medicalEvaluation): JsonResponse
     {
-        try {
-            $appointments = Appointment::with(['patient', 'user'])
-                ->where('appointment_datetime', '>=', now())
-                ->where('appointment_datetime', '<=', now()->addDays(30))
-                ->whereIn('status', ['pending', 'confirmed'])
-                ->orderBy('appointment_datetime', 'asc')
-                ->get();
+        $user = auth()->user();
 
-            return response()->json($appointments);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al obtener próximas citas',
-                'error' => $e->getMessage()
-            ], 500);
+        if ($user->isRemitente() && $medicalEvaluation->user_id !== $user->id) {
+            return ApiResponse::forbidden();
         }
-    }
 
-    /**
-     * Get a single appointment
-     */
-    public function show(Appointment $appointment): JsonResponse
-    {
+        $request->validate([
+            'appointment_datetime' => ['required', 'date', 'after:now'],
+            'procedure_type'       => ['required', 'in:concejacion,sincecion'],
+            'doctor_name'          => ['nullable', 'string', 'max:100'],
+            'notes'                => ['nullable', 'string', 'max:500'],
+            'duration_minutes'     => ['nullable', 'integer', 'min:15', 'max:480'],
+        ]);
+
         try {
-            $appointment->load(['patient', 'user', 'procedure']);
+            $fastingRequired = $request->procedure_type === Appointment::TYPE_CONCEJACION;
 
-            return response()->json($appointment);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al obtener la cita',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
+            // Cancelar citas previas activas para esta valoración
+            Appointment::where('medical_evaluation_id', $medicalEvaluation->id)
+                ->whereIn('status', [Appointment::STATUS_PENDING, Appointment::STATUS_CONFIRMED])
+                ->update(['status' => Appointment::STATUS_CANCELLED]);
 
-    /**
-     * Create a new appointment
-     */
-    public function store(StoreAppointmentRequest $request): JsonResponse
-    {
-        try {
             $appointment = Appointment::create([
-                'user_id' => auth()->id(),
-                'patient_id' => $request->patient_id,
-                'referrer_name' => $request->referrer_name,
-                'appointment_datetime' => $request->appointment_datetime,
-                'duration_minutes' => $request->duration_minutes,
-                'planned_procedures' => $request->planned_procedures,
-                'notes' => $request->notes,
-                'status' => 'pending'
+                'user_id'               => auth()->id(),
+                'patient_id'            => $medicalEvaluation->patient_id,
+                'medical_evaluation_id' => $medicalEvaluation->id,
+                'referrer_name'         => $medicalEvaluation->referrer_name ?? '',
+                'appointment_datetime'  => $request->appointment_datetime,
+                'duration_minutes'      => $request->duration_minutes ?? 60,
+                'planned_procedures'    => [],
+                'notes'                 => $request->notes,
+                'status'                => Appointment::STATUS_CONFIRMED,
+                'procedure_type'        => $request->procedure_type,
+                'doctor_name'           => $request->doctor_name,
+                'fasting_required'      => $fastingRequired,
             ]);
 
-            // Try to create Google Calendar event
-            $eventId = $this->calendarService->createEvent($appointment);
-            if ($eventId) {
-                $appointment->update(['google_calendar_event_id' => $eventId]);
-            }
-
-            $appointment->load(['patient', 'user']);
-
-            return response()->json([
-                'message' => 'Cita creada exitosamente',
-                'appointment' => $appointment
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al crear la cita',
-                'error' => $e->getMessage()
-            ], 500);
+            return ApiResponse::success($appointment->load('patient'), 201);
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al crear la cita', debug: $e->getMessage());
         }
     }
 
     /**
-     * Update an appointment
+     * Actualizar una cita existente.
      */
-    public function update(UpdateAppointmentRequest $request, Appointment $appointment): JsonResponse
+    public function update(Request $request, Appointment $appointment): JsonResponse
     {
-        try {
-            $appointment->update($request->validated());
+        $user = auth()->user();
 
-            // Update Google Calendar event if it exists
-            if ($appointment->google_calendar_event_id) {
-                $this->calendarService->updateEvent($appointment);
+        if ($user->isRemitente() && $appointment->medicalEvaluation?->user_id !== $user->id) {
+            return ApiResponse::forbidden();
+        }
+
+        $request->validate([
+            'appointment_datetime' => ['sometimes', 'date', 'after:now'],
+            'procedure_type'       => ['sometimes', 'in:concejacion,sincecion'],
+            'doctor_name'          => ['nullable', 'string', 'max:100'],
+            'notes'                => ['nullable', 'string', 'max:500'],
+            'duration_minutes'     => ['nullable', 'integer', 'min:15', 'max:480'],
+        ]);
+
+        try {
+            $data = $request->only(['appointment_datetime', 'procedure_type', 'doctor_name', 'notes', 'duration_minutes']);
+
+            if (isset($data['procedure_type'])) {
+                $data['fasting_required'] = $data['procedure_type'] === Appointment::TYPE_CONCEJACION;
             }
 
-            $appointment->load(['patient', 'user']);
+            $appointment->update($data);
 
-            return response()->json([
-                'message' => 'Cita actualizada exitosamente',
-                'appointment' => $appointment
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al actualizar la cita',
-                'error' => $e->getMessage()
-            ], 500);
+            return ApiResponse::success($appointment->fresh()->load('patient'));
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al actualizar la cita', debug: $e->getMessage());
         }
     }
 
     /**
-     * Cancel (delete) an appointment
+     * Cancelar una cita.
      */
-    public function destroy(Appointment $appointment): JsonResponse
+    public function cancel(Appointment $appointment): JsonResponse
     {
-        try {
-            // Delete from Google Calendar if synced
-            if ($appointment->google_calendar_event_id) {
-                $this->calendarService->deleteEvent(
-                    $appointment->google_calendar_event_id,
-                    $appointment->user_id
-                );
-            }
+        $user = auth()->user();
 
-            // Mark as cancelled instead of deleting
-            $appointment->update(['status' => 'cancelled']);
-
-            return response()->json([
-                'message' => 'Cita cancelada exitosamente'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al cancelar la cita',
-                'error' => $e->getMessage()
-            ], 500);
+        if ($user->isRemitente() && $appointment->medicalEvaluation?->user_id !== $user->id) {
+            return ApiResponse::forbidden();
         }
-    }
 
-    /**
-     * Convert appointment to completed procedure
-     */
-    public function completeAppointment(Request $request, Appointment $appointment): JsonResponse
-    {
         try {
-            // Validate that procedure data is provided
-            $request->validate([
-                'procedure_items' => 'required|array|min:1',
-                'procedure_items.*.item_name' => 'required|string',
-                'procedure_items.*.price' => 'required|numeric|min:0',
-                'procedure_items.*.meta' => 'nullable|array',
-                'notes' => 'nullable|string'
-            ]);
+            $appointment->update(['status' => Appointment::STATUS_CANCELLED]);
 
-            // Calculate total amount
-            $totalAmount = collect($request->procedure_items)->sum('price');
-
-            // Create medical evaluation if it doesn't exist
-            $medicalEvaluation = $appointment->patient->medicalEvaluations()->latest()->first();
-
-            if (!$medicalEvaluation) {
-                return response()->json([
-                    'message' => 'El paciente debe tener una evaluación médica antes de completar la cita'
-                ], 400);
-            }
-
-            // Create procedure
-            $procedure = $medicalEvaluation->procedures()->create([
-                'procedure_date' => $appointment->appointment_datetime->format('Y-m-d'),
-                'total_amount' => $totalAmount,
-                'notes' => $request->notes ?? $appointment->notes
-            ]);
-
-            // Create procedure items
-            foreach ($request->procedure_items as $item) {
-                $procedure->procedureItems()->create([
-                    'item_name' => $item['item_name'],
-                    'price' => $item['price'],
-                    'meta' => $item['meta'] ?? null
-                ]);
-            }
-
-            // Link procedure to appointment and mark as completed
-            $appointment->update([
-                'procedure_id' => $procedure->id,
-                'status' => 'completed'
-            ]);
-
-            // Update Google Calendar event
-            if ($appointment->google_calendar_event_id) {
-                $this->calendarService->updateEvent($appointment);
-            }
-
-            $appointment->load(['patient', 'user', 'procedure.procedureItems']);
-
-            return response()->json([
-                'message' => 'Cita marcada como completada y procedimiento registrado',
-                'appointment' => $appointment,
-                'procedure' => $procedure
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al completar la cita',
-                'error' => $e->getMessage()
-            ], 500);
+            return ApiResponse::success($appointment->fresh());
+        } catch (Throwable $e) {
+            return ApiResponse::error('Error al cancelar la cita', debug: $e->getMessage());
         }
     }
 }

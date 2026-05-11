@@ -6,15 +6,15 @@ use App\Http\Controllers\API\ClinicalImageController;
 use App\Http\Controllers\API\ClinicalRecordController;
 use App\Http\Controllers\API\InventoryController;
 use App\Http\Controllers\API\DistributorController;
+use App\Http\Controllers\API\ExamOrderController;
 use App\Http\Controllers\API\MedicalEvaluationController;
 use App\Http\Controllers\API\PatientController;
+use App\Http\Controllers\API\PatientPhotoController;
 use App\Http\Controllers\API\ProcedureController;
 use App\Http\Controllers\API\StatsController;
 use App\Http\Controllers\API\UserController;
 
-// TODO: Descomentar cuando se retome el módulo de citas
-// use App\Http\Controllers\Auth\GoogleCalendarAuthController;
-// use App\Http\Controllers\API\AppointmentController;
+use App\Http\Controllers\API\AppointmentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -83,11 +83,30 @@ Route::prefix('v1')->group(function () {
         //   Lectura eliminada (showByPatient, showById) — reemplazada por Vista 2.
         //   Solo se exponen las acciones que el frontend dispara puntualmente.
         //
+        // ── Acciones sobre valoraciones ───────────────────────────────────────
         Route::prefix('medical-evaluations/{medicalEvaluation}')->group(function () {
             Route::put('/',            [MedicalEvaluationController::class, 'update']);
             Route::patch('/confirmar', [MedicalEvaluationController::class, 'confirmar']);
             Route::patch('/cancelar',  [MedicalEvaluationController::class, 'cancelar']);
+            // Orden de exámenes
+            Route::get('/exam-order',  [ExamOrderController::class, 'show']);
+            Route::post('/exam-order', [ExamOrderController::class, 'store']);
+            // Fotos del registro
+            Route::get('/photos',           [PatientPhotoController::class, 'index']);
+            Route::post('/photos',          [PatientPhotoController::class, 'store']);
+            Route::delete('/photos/{photo}', [PatientPhotoController::class, 'destroy']);
+            // Cita agendada
+            Route::get('/appointment',  [AppointmentController::class, 'show']);
+            Route::post('/appointment', [AppointmentController::class, 'store']);
         });
+
+        // ── Acciones sobre órdenes de exámenes ───────────────────────────────
+        Route::patch('/exam-orders/{examOrder}',         [ExamOrderController::class, 'update']);
+        Route::post('/exam-orders/{examOrder}/result',   [ExamOrderController::class, 'uploadResult']);
+
+        // ── Citas (agendamiento) ──────────────────────────────────────────────
+        Route::patch('/appointments/{appointment}',  [AppointmentController::class, 'update']);
+        Route::delete('/appointments/{appointment}', [AppointmentController::class, 'cancel']);
 
         // ── Acciones sobre procedimientos (desde Vista 2) ─────────────────────
         //

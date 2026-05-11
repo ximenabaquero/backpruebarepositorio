@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\API;
 
+use App\Helpers\ImageHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\ClinicalImage;
@@ -65,8 +66,8 @@ class ClinicalImageController extends Controller
         ]);
 
         try {
-            $beforePath = $request->file('before_image')->store('before-after', 'public');
-            $afterPath  = $request->file('after_image')->store('before-after', 'public');
+            $beforePath = ImageHelper::compressAndStore($request->file('before_image'), 'before-after');
+            $afterPath  = ImageHelper::compressAndStore($request->file('after_image'), 'before-after');
 
             $image = ClinicalImage::create([
                 'title'        => $request->title,
@@ -110,15 +111,12 @@ class ClinicalImageController extends Controller
             // Reemplazar imagen before — borra la anterior del disco
             if ($request->hasFile('before_image')) {
                 Storage::disk('public')->delete($item->before_image);
-                $item->before_image = $request->file('before_image')
-                    ->store('before-after', 'public');
+                $item->before_image = ImageHelper::compressAndStore($request->file('before_image'), 'before-after');
             }
 
-            // Reemplazar imagen after — borra la anterior del disco
             if ($request->hasFile('after_image')) {
                 Storage::disk('public')->delete($item->after_image);
-                $item->after_image = $request->file('after_image')
-                    ->store('before-after', 'public');
+                $item->after_image = ImageHelper::compressAndStore($request->file('after_image'), 'before-after');
             }
 
             $item->save();

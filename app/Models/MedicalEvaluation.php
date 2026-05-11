@@ -103,4 +103,16 @@ class MedicalEvaluation extends Model
     {
         return $this->hasMany(InventoryUsage::class, 'medical_evaluation_id');
     }
+
+    public function examOrder()
+    {
+        return $this->hasOne(ExamOrder::class);
+    }
+
+    public function appointment()
+    {
+        return $this->hasOne(Appointment::class)
+                    ->whereIn('status', ['pending', 'confirmed'])
+                    ->latest();
+    }
 }
