@@ -209,15 +209,9 @@ class InventoryController extends Controller
             ->orderByDesc('amount')
             ->get();
 
-        return ApiResponse::success([
-            'period' => $month
-                ? \Carbon\Carbon::createFromDate($year, $month, 1)
-                    ->locale('es')
-                    ->isoFormat('MMMM YYYY') 
-                : (string) $year,                                                
-            'total'  => (int) $rows->sum('amount'),
-            'items'  => $rows,
-        ]);
+        return ApiResponse::success(
+            $query->groupBy('ic.id', 'ic.name')->orderByDesc('amount')->get()
+        );
     }
 
     // Igual para spendByDistributor — mismo cambio
@@ -243,15 +237,9 @@ class InventoryController extends Controller
             ->orderByDesc('amount')
             ->get();
 
-        return ApiResponse::success([
-            'period' => $month
-                ? \Carbon\Carbon::createFromDate($year, $month, 1)
-                    ->locale('es')
-                    ->isoFormat('MMMM YYYY')  // "abril 2026"
-            : (string) $year,
-            'total'  => (int) $rows->sum('amount'),
-            'items'  => $rows,
-        ]);
+        return ApiResponse::success(
+            $query->groupBy('d.id', 'd.name')->orderByDesc('amount')->get()
+        );
     }
 
     /**
