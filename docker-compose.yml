@@ -1,73 +1,84 @@
 services:
+
   # ─────────────────────────────────────────────
-  # PHP — ejecuta Laravel
+  # PHP / Laravel
   # ─────────────────────────────────────────────
   app:
     build:
-      context: . # usa el Dockerfile de esta carpeta
+      context: .
       dockerfile: Dockerfile
-    container_name: podocare_app
+
+    container_name: olga_app
+
     restart: unless-stopped
+
     working_dir: /var/www
+
     volumes:
-      # Sincroniza tu código local con el contenedor en tiempo real.
-      # Así cada cambio que hagas en tu editor se refleja sin reconstruir.
       - .:/var/www
-      # Excluimos vendor del sync — se usa el que se instaló dentro del contenedor
       - /var/www/vendor
+
     networks:
-      - podocare
+      - olga
+
     depends_on:
       - mysql
 
   # ─────────────────────────────────────────────
-  # Nginx — servidor web, recibe peticiones HTTP
+  # Nginx
   # ─────────────────────────────────────────────
   nginx:
-    image: nginx:alpine # imagen oficial de Nginx, versión liviana
-    container_name: podocare_nginx
+    image: nginx:alpine
+
+    container_name: olga_nginx
+
     restart: unless-stopped
+
     ports:
-      # Puerto 8000 de tu máquina → puerto 80 del contenedor Nginx
-      # Así accedés a la API desde http://localhost:8000
       - "8000:80"
+
     volumes:
       - .:/var/www
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+
     networks:
-      - podocare
+      - olga
+
     depends_on:
       - app
 
   # ─────────────────────────────────────────────
-  # MySQL — base de datos
+  # MySQL
   # ─────────────────────────────────────────────
   mysql:
     image: mysql:8.0
-    container_name: podocare_mysql
+
+    container_name: olga_mysql
+
     restart: unless-stopped
+
     environment:
-      MYSQL_DATABASE:
-      MYSQL_ROOT_PASSWORD:
+      MYSQL_DATABASE: coldesthetic
+      MYSQL_ROOT_PASSWORD: Dianabaquero1@
+
     ports:
-      # Puerto 3307 de tu máquina → 3306 del contenedor
-      # Usamos 3307 para no chocar si ya tenés MySQL local en 3306
       - "3307:3306"
+
     volumes:
-      # Volumen persistente: los datos de MySQL NO se pierden al bajar los contenedores
       - mysql_data:/var/lib/mysql
+
     networks:
-      - podocare
+      - olga
 
 # ─────────────────────────────────────────────
-# Red interna compartida por los 3 contenedores
+# Networks
 # ─────────────────────────────────────────────
 networks:
-  podocare:
+  olga:
     driver: bridge
 
 # ─────────────────────────────────────────────
-# Volumen para persistir los datos de MySQL
+# Volumes
 # ─────────────────────────────────────────────
 volumes:
   mysql_data:
