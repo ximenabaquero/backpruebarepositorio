@@ -3,6 +3,7 @@ node_modules/
 .env
 .env.*
 storage/logs/*.log
+bootstrap/cache/*.php
 .git/
 .gitignore
 docker-compose*.yml

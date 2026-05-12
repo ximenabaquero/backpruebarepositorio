@@ -23,7 +23,8 @@ RUN composer install --no-interaction --optimize-autoloader --no-dev --no-script
 # Copiamos el resto del proyecto
 COPY . .
 
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache \
+RUN php artisan package:discover --ansi \
+    && chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache \
     && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
 EXPOSE 8000
