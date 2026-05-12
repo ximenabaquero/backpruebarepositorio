@@ -21,7 +21,7 @@ class ClinicSeeder extends Seeder
         // ── 1. Admin fijo ─────────────────────────────────────────────────
         $admin = User::factory()->admin()->create([
             'name'       => 'admin',
-            'email'      => 'admin@coldesthetic.com',
+            'email'      => 'firstuser@olga.com',
             'first_name' => 'Admin',
             'last_name'  => 'Sistema',
             'password'   => 'password',
