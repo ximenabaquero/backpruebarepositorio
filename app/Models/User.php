@@ -70,12 +70,4 @@ class User extends Authenticatable
         return $this->status === self::STATUS_ACTIVE;
     }
 
-    // ─────────────────────────────────────────────
-    // Relaciones
-    // ─────────────────────────────────────────────
-
-    public function clinicalImages()
-    {
-        return $this->hasMany(ClinicalImage::class);
-    }
 }
