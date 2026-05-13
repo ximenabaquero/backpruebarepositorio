@@ -21,6 +21,9 @@ return [
 
     'allowed_origins' => [
         'http://localhost:3000',
+        'https://www.olga.health',
+        'https://olga.health',
+        env('FRONTEND_URL', ''),
     ],
 
     'allowed_origins_patterns' => [],
