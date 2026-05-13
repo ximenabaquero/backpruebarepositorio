@@ -14,9 +14,10 @@ class ClinicSeeder extends Seeder
 
         if ($user) {
             // Actualizar en caso de que role/status/password estén mal
-            $user->password = Hash::make('password');
-            $user->role     = User::ROLE_ADMIN;
-            $user->status   = User::STATUS_ACTIVE;
+            $user->password  = Hash::make('password');
+            $user->role      = User::ROLE_ADMIN;
+            $user->status    = User::STATUS_ACTIVE;
+            $user->cellphone = $user->cellphone ?? '3000000000';
             $user->save();
             echo "Usuario admin actualizado.\n";
         } else {
@@ -28,6 +29,7 @@ class ClinicSeeder extends Seeder
             $user->last_name  = 'OLGA';
             $user->role       = User::ROLE_ADMIN;
             $user->status     = User::STATUS_ACTIVE;
+            $user->cellphone  = '3000000000';
             $user->brand_name = 'Olga';
             $user->brand_slug = 'olga';
             $user->save();
