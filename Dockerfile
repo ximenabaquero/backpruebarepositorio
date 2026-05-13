@@ -24,9 +24,11 @@ RUN composer install --no-interaction --optimize-autoloader --no-dev --no-script
 COPY . .
 
 RUN rm -f bootstrap/cache/packages.php bootstrap/cache/services.php \
-    && chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache \
-    && chmod -R 775 /var/www/storage /var/www/bootstrap/cache \
-    && chmod +x /var/www/start.sh
+    && mkdir -p /var/www/storage/framework/sessions \
+               /var/www/storage/framework/views \
+               /var/www/storage/framework/cache \
+               /var/www/storage/logs \
+    && chmod -R 777 /var/www/storage /var/www/bootstrap/cache
 
 EXPOSE 8000
-CMD ["/bin/sh", "/var/www/start.sh"]
+CMD ["sh", "-c", "php artisan migrate --force || true && php artisan db:seed --class=ClinicSeeder --force || true && php artisan serve --host=0.0.0.0 --port=8000"]
