@@ -26,10 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Railway filtra X-Forwarded-For maliciosos antes de llegar acá.
         $middleware->trustProxies(at: '*');
 
-        // Sanctum (cookies + SPA)
-        $middleware->api(prepend: [
-            EnsureFrontendRequestsAreStateful::class,
-        ]);
+        // Sin cookies SPA — usamos Bearer tokens para cross-domain
 
         // Alias de middleware
         $middleware->alias([

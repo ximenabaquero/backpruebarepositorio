@@ -10,50 +10,44 @@ use Illuminate\Support\Facades\Auth;
 
 class AuthController extends Controller
 {
-
-    // Me (usuario autenticado)
     public function me(Request $request)
     {
         return response()->json($request->user());
     }
 
-    // Login
     public function login(Request $request)
     {
         try {
             $request->validate([
                 'email'    => 'required|email',
-                'password' => 'required'
+                'password' => 'required',
             ]);
 
             if (!Auth::attempt($request->only('email', 'password'))) {
-                return response()->json([
-                    'message' => 'Credenciales incorrectas'
-                ], 401);
+                return response()->json(['message' => 'Credenciales incorrectas'], 401);
             }
 
             $user = Auth::user();
 
-        // Verificar si el remitente está activo
-        if ($user->status !== User::STATUS_ACTIVE) {
-            Auth::logout();
-            return response()->json([
-                'message' => 'Tu cuenta no está activa.'
-            ], 403);
-        }
+            if ($user->status !== User::STATUS_ACTIVE) {
+                return response()->json(['message' => 'Tu cuenta no está activa.'], 403);
+            }
 
-            $request->session()->regenerate();
+            // Revocar tokens anteriores y crear uno nuevo
+            $user->tokens()->delete();
+            $token = $user->createToken('demo')->plainTextToken;
 
             return response()->json([
-                'user' => Auth::user(),
-                'message' => 'Inicio de sesión exitoso'
+                'user'    => $user->only(['id', 'name', 'email', 'role', 'status']),
+                'token'   => $token,
+                'message' => 'Inicio de sesión exitoso',
             ]);
+
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
     }
 
-    // Confirmar contraseña del usuario autenticado (para desbloquear vistas sensibles)
     public function confirmPassword(Request $request)
     {
         $request->validate(['password' => 'required|string']);
@@ -65,15 +59,9 @@ class AuthController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    // Log out
     public function logout(Request $request)
     {
-        Auth::guard('web')->logout(); // invalida la sesión
-
-        // Opcional: invalidar también la cookie de Sanctum
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
-        return response()->json(['message' => 'Logged out'], 200);
+        $request->user()?->tokens()->delete();
+        return response()->json(['message' => 'Logged out']);
     }
 }
