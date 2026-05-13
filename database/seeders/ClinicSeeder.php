@@ -10,9 +10,16 @@ class ClinicSeeder extends Seeder
 {
     public function run(): void
     {
-        $exists = User::where('email', 'firstuser@olga.com')->exists();
+        $user = User::where('email', 'firstuser@olga.com')->first();
 
-        if (!$exists) {
+        if ($user) {
+            // Actualizar en caso de que role/status/password estén mal
+            $user->password = Hash::make('password');
+            $user->role     = User::ROLE_ADMIN;
+            $user->status   = User::STATUS_ACTIVE;
+            $user->save();
+            echo "Usuario admin actualizado.\n";
+        } else {
             $user = new User();
             $user->name       = 'admin';
             $user->email      = 'firstuser@olga.com';
@@ -24,10 +31,7 @@ class ClinicSeeder extends Seeder
             $user->brand_name = 'Olga';
             $user->brand_slug = 'olga';
             $user->save();
-
-            echo "Usuario admin creado: firstuser@olga.com\n";
-        } else {
-            echo "Usuario admin ya existe.\n";
+            echo "Usuario admin creado.\n";
         }
     }
 }
